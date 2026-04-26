@@ -1,0 +1,38 @@
+# Dependencias (se instalan dentro del contenedor)
+node_modules/
+
+# Variables de entorno (nunca en la imagen)
+.env
+.env.*
+!.env.example
+!.env.dev.example
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+logs/
+
+# Tests (no van en la imagen de producción)
+tests/
+coverage/
+.nyc_output/
+
+# Documentación
+*.md
+!CLAUDE.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Docker (no hace falta incluir los compose en la imagen)
+docker-compose*.yml
+Dockerfile
+.dockerignore

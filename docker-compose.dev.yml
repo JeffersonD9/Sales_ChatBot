@@ -1,0 +1,59 @@
+# ══════════════════════════════════════════════════════
+#  docker-compose.dev.yml — Override de desarrollo
+#
+#  Extiende docker-compose.yml (base) con:
+#    - App con hot reload (nodemon via stage dev del Dockerfile)
+#    - Código fuente montado como volumen (cambios en vivo)
+#    - Puerto 3000 expuesto directamente (sin nginx)
+#    - Puerto 5432 expuesto para conectar desde DBeaver/TablePlus
+#    - Puerto 6379 expuesto para inspeccionar Redis con redis-cli
+#
+#  Levantar:
+#    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+#  Alias recomendado (agregar a .bashrc o .zshrc):
+#    alias dcdev="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
+#
+#  Comandos comunes:
+#    dcdev up -d                          # levantar en background
+#    dcdev logs -f app                    # ver logs del bot
+#    dcdev exec app npm run migrate       # correr migrations
+#    dcdev exec app node scripts/create-tenant.js --slug=demo ...
+#    dcdev down                           # apagar todo
+#    dcdev down -v                        # apagar + borrar volumes (reset total)
+# ══════════════════════════════════════════════════════
+
+services:
+
+  # ── Aplicación (hot reload) ────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      target: dev                          # usa el stage dev del Dockerfile
+    image: jesttech/whatsapp-saas:dev
+    container_name: whatsapp-saas-app-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"                        # acceso directo sin nginx
+    env_file: .env
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app                             # código fuente en vivo
+      - /app/node_modules                  # proteger node_modules del contenedor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  # ── Exponer puertos de infra para herramientas locales ─────────────────────
+  postgres:
+    ports:
+      - "5432:5432"                        # DBeaver / TablePlus / psql
+
+  redis:
+    ports:
+      - "6379:6379"                        # redis-cli / RedisInsight

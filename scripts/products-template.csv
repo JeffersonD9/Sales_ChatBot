@@ -1,0 +1,6 @@
+nombre,descripcion,precio,tallas,imagen_url,emoji,categoria
+Blusa Floral,Tela chiffon liviana ideal para el calor,45000,S|M|L|XL,https://ejemplo.com/blusa-floral.jpg,🌸,blusas
+Jean Skinny Negro,Jean elastizado de alto impacto,89000,28|30|32|34,https://ejemplo.com/jean-negro.jpg,👖,jeans
+Vestido Casual Rayas,Vestido veranero tela algodón,65000,S|M|L,,👗,vestidos
+Tenis Blanco Classic,Tenis unisex suela vulcanizada,120000,35|36|37|38|39|40|41,https://ejemplo.com/tenis.jpg,👟,calzado
+Bolso Cuero Café,Bolso mano genuino cuero colombiano,180000,,,👜,accesorios
