@@ -1,126 +1,118 @@
-# Estado del Sprint de Producción
+# Estado del Sprint — Pendientes
 
-**Última actualización:** 2026-04-26
-**Estado general:** En progreso — bloqueado por verificación de cuenta Meta
+**Actualizado:** 2026-04-26
 
----
-
-## Bloqueantes activos
-
-| Bloqueante | Afecta | Qué hacer |
-|------------|--------|-----------|
-| Verificación de cuenta Meta | Tarea 1.5, todo el Día 4 | Esperar aprobación Meta (puede tardar 1-2 días hábiles) |
-| VPS no provisionado | Tareas 2.4, 2.5 y Días 3-4 | Provisionar VPS en Hostinger una vez resuelta Meta |
+Todo lo que no esta en esta lista ya esta hecho y commiteado.
 
 ---
 
-## Progreso por tarea
+## Bloqueantes
 
-### Día 1 — Validación local y secrets
-
-| Tarea | Estado | Nota |
-|-------|--------|------|
-| 1.1 Generar secrets de producción | ✅ Hecho | Guardados en gestor de contraseñas |
-| 1.2 Crear `.env.prod` local | ✅ Hecho | `META_APP_SECRET` pendiente de llenar |
-| 1.3 Postgres + Redis + migrations | ✅ Hecho | 5 tablas creadas correctamente |
-| 1.4 Tenant de prueba + webhook GET | ✅ Hecho | `test-local` responde challenge OK |
-| 1.5 Smoke test HMAC | ⏸ Bloqueado | Necesita `META_APP_SECRET` real de Meta |
-| 1.6 Cleanup local | ⏸ Pendiente | Hacer después de 1.5 |
-
-### Día 2 — Infraestructura de producción
-
-| Tarea | Estado | Nota |
-|-------|--------|------|
-| 2.1 Crear `docker-compose.prod.yml` | ✅ Hecho | Validado con `docker compose config` |
-| 2.2 Reescribir `nginx/nginx.conf` | ✅ Hecho | Sintaxis OK, DOMINIO_PLACEHOLDER se reemplaza en Tarea 3.1 |
-| 2.3 Crear `scripts/init-letsencrypt.sh` | ✅ Hecho | Listo para ejecutar en VPS |
-| 2.4 Provisionar VPS | ⏸ Pendiente [USUARIO] | Docker, UFW, repo, `.env` con `chmod 600` |
-| 2.5 Levantar stack en HTTP en VPS | ⏸ Pendiente [USUARIO] | Depende de 2.4 |
-
-### Día 3 — SSL + Backups
-
-| Tarea | Estado | Nota |
-|-------|--------|------|
-| 3.1 Activar SSL (Let's Encrypt) | ⏸ Pendiente | Depende de 2.5 + dominio apuntando al VPS |
-| 3.2 Script de backup PostgreSQL | ⏸ Pendiente | Depende de 2.4 |
-| 3.3 Cron diario de backup | ⏸ Pendiente | Depende de 3.2 |
-| 3.4 Probar restore | ⏸ Pendiente | Depende de 3.2 |
-
-### Día 4 — Onboarding Cliente1
-
-| Tarea | Estado | Nota |
-|-------|--------|------|
-| 4.1 Crear tenant cliente1 | ⏸ Pendiente [USUARIO] | Necesita credenciales Meta del cliente |
-| 4.2 Importar productos cliente1 | ⏸ Pendiente [USUARIO] | Necesita catálogo del cliente |
-| 4.3 Registrar webhook en Meta | ⏸ Bloqueado | Necesita cuenta Meta verificada + VPS con SSL |
-| 4.4 Smoke test end-to-end WhatsApp real | ⏸ Bloqueado | Depende de 4.3 |
-
-### Día 5 — Buffer y documentación
-
-| Tarea | Estado | Nota |
-|-------|--------|------|
-| 5.1 Monitoreo activo primeras 24h | ⏸ Pendiente | Después del go-live |
-| 5.2 Onboarding clientes adicionales | ⏸ Pendiente | Ver `docs/ONBOARDING_CLIENTE.md` |
-| 5.3 Crear `docs/RUNBOOK.md` | ⏸ Pendiente | |
-| 5.4 Crear `docs/BACKLOG.md` | ⏸ Pendiente | |
+| Bloqueante | Desbloquea |
+|------------|-----------|
+| Verificacion de empresa en Meta | Registrar webhooks en Meta (Tarea 4.3) |
+| VPS provisionado | Tareas 2.4 en adelante |
 
 ---
 
-## Qué se puede hacer AHORA (sin Meta ni VPS)
+## Pendiente
 
-Estas tareas están listas para ejecutar en cualquier momento:
+### Necesita solo VPS (sin Meta)
 
-1. **Provisionar el VPS** (Tarea 2.4) — Solo necesita acceso SSH. No depende de Meta.
-2. **Levantar stack en HTTP** (Tarea 2.5) — Una vez provisionado el VPS.
-3. **Resolver dominio DNS** — Verificar que `bots.jesttech.com` apunte a la IP del VPS con `dig +short bots.jesttech.com`.
-
----
-
-## Qué necesitás de Meta (en orden)
-
-1. **`META_APP_SECRET`** — Para terminar la Tarea 1.5 y llenar el `.env.prod` / `.env` del VPS.
-   - Está en: developers.facebook.com → tu App → Configuración básica → Secreto de la aplicación
-
-2. **Cuenta verificada** — Para poder registrar webhooks y usar la API en producción.
-
-3. **Por cada cliente:**
-   - `Phone Number ID`
-   - `Permanent Access Token`
-   - (El cliente lo obtiene siguiendo `docs/ONBOARDING_CLIENTE.md` → Paso 1)
-
----
-
-## Ruta crítica para go-live
-
+**Tarea 2.4 — Provisionar el VPS**
+```bash
+ssh USUARIO@IP_VPS
+sudo apt update && sudo apt upgrade -y
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+# Reconectar SSH
+sudo apt install -y git ufw fail2ban
+sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+sudo ufw --force enable
+mkdir -p ~/apps && cd ~/apps
+git clone https://github.com/USUARIO/whatsapp-saas.git
+cd whatsapp-saas
+cp .env.example .env
+nano .env   # pegar secrets de produccion, host=postgres (no localhost)
+chmod 600 .env
 ```
-Meta verificada
-      ↓
-Completar Tarea 1.5 (HMAC local) + 1.6 (cleanup)
-      ↓
-Provisionar VPS (Tarea 2.4)                ← se puede hacer en paralelo con Meta
-      ↓
-Stack en HTTP en VPS (Tarea 2.5)
-      ↓
-SSL con Let's Encrypt (Tarea 3.1)
-      ↓
-Backups + restore (Tareas 3.2-3.4)
-      ↓
-Onboarding Cliente1 (Tareas 4.1-4.4)
-      ↓
-Go-live ✅
+Verificacion: `sudo ufw status` muestra 22/80/443. `docker --version` OK. `stat -c '%a' .env` = 600.
+
+---
+
+**Tarea 2.5 — Levantar stack en HTTP**
+```bash
+# Comentar bloque HTTPS en nginx.conf hasta tener cert
+sed -i.tmp '/listen 443 ssl;/,/^  }$/s/^/#/' nginx/nginx.conf
+
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build app
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgres redis
+sleep 15
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm app node scripts/migrate.js
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d app nginx
+```
+Verificacion: `curl http://IP_VPS/health` responde 200.
+
+---
+
+**Tarea 3.1 — SSL**
+```bash
+test -f nginx/nginx.conf.tmp && mv nginx/nginx.conf.tmp nginx/nginx.conf
+docker compose -f docker-compose.yml -f docker-compose.prod.yml stop nginx
+bash scripts/init-letsencrypt.sh bots.jesttech.com jeffersonm0915@gmail.com
+```
+Verificacion: `curl -I https://bots.jesttech.com/health` responde HTTP/2 200.
+
+---
+
+**Tarea 3.2-3.4 — Backups**
+```bash
+sudo tee /usr/local/bin/backup-saas.sh > /dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+BACKUP_DIR="/var/backups/whatsapp-saas"
+TIMESTAMP=$(date +%Y-%m-%d_%H%M)
+mkdir -p "$BACKUP_DIR"
+cd ~/apps/whatsapp-saas
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U app -d whatsapp_saas | gzip > "$BACKUP_DIR/backup_${TIMESTAMP}.sql.gz"
+SIZE=$(stat -c%s "$BACKUP_DIR/backup_${TIMESTAMP}.sql.gz")
+[[ $SIZE -lt 1024 ]] && { echo "ERROR: backup vacio"; rm "$BACKUP_DIR/backup_${TIMESTAMP}.sql.gz"; exit 1; }
+find "$BACKUP_DIR" -name "backup_*.sql.gz" -mtime +7 -delete
+echo "$(date -Iseconds) — Backup OK ($SIZE bytes)"
+EOF
+sudo chmod +x /usr/local/bin/backup-saas.sh
+sudo mkdir -p /var/backups/whatsapp-saas && sudo chown $USER:$USER /var/backups/whatsapp-saas
+
+# Ejecutar y verificar
+/usr/local/bin/backup-saas.sh
+ls -lh /var/backups/whatsapp-saas/
+
+# Cron
+(crontab -l 2>/dev/null; echo "0 3 * * * /usr/local/bin/backup-saas.sh >> /var/log/backup-saas.log 2>&1") | crontab -
+
+# Probar restore
+LATEST=$(ls -t /var/backups/whatsapp-saas/backup_*.sql.gz | head -1)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres psql -U app -d postgres -c "CREATE DATABASE restore_test;"
+gunzip -c "$LATEST" | docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U app -d restore_test
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres psql -U app -d restore_test -c "\dt"
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres psql -U app -d postgres -c "DROP DATABASE restore_test;"
 ```
 
 ---
 
-## Archivos creados en este sprint
+### Necesita VPS + Meta verificada
 
-| Archivo | Propósito |
-|---------|-----------|
-| `.env.prod` | Variables de entorno de producción (no commiteado) |
-| `docker-compose.prod.yml` | Stack de producción |
-| `nginx/nginx.conf` | Proxy HTTPS con rate limiting y headers de seguridad |
-| `scripts/init-letsencrypt.sh` | Bootstrap SSL con Let's Encrypt |
-| `scripts/smoke-hmac.js` | Smoke test HMAC (crear en Tarea 1.5, borrar después) |
-| `docs/CREAR_TENANT.md` | Guía para crear tenants |
-| `docs/ONBOARDING_CLIENTE.md` | Proceso completo de onboarding por cliente |
-| `docs/SPRINT_STATUS.md` | Este archivo |
+**Tarea 4.1 — Crear tenant cliente1**
+Ver `docs/CREAR_TENANT.md`. Datos que necesitas del cliente: slug, name, wa-token, phone-id, verify-token, owner-phone.
+
+**Tarea 4.2 — Importar productos cliente1**
+Ver `docs/ONBOARDING_CLIENTE.md` Paso 3.
+
+**Tarea 4.3 — Registrar webhook en Meta** `[USUARIO]`
+- Meta Business → App → WhatsApp → Webhook → Editar
+- Callback URL: `https://bots.jesttech.com/webhook/<slug>`
+- Verify token: el del tenant
+
+**Tarea 4.4 — Smoke test con WhatsApp real** `[USUARIO]`
+Enviar `hola` y recorrer el flujo completo. Ver tabla en `docs/ONBOARDING_CLIENTE.md` Paso 5.
