@@ -124,4 +124,130 @@ async function notifyLead(clientPhone, reason = '', tenant) {
   }
 }
 
-module.exports = { notifySale, notifyAdvisorRequest, notifyLead };
+/**
+ * Notifica al dueno del negocio que su suscripcion vencio hoy.
+ * @param {object} tenant
+ */
+async function notifyBillingDue(tenant) {
+  const storeName = tenant.bot_config?.business_name || tenant.name;
+  const amount    = tenant.billing_amount
+    ? formatPrice(tenant.billing_amount)
+    : 'el valor acordado';
+
+  const msg =
+    `🔔 *Renovacion vencida — ${storeName}*\n\n` +
+    `Tu suscripcion del bot vencio hoy.\n` +
+    `💰 *Valor:* ${amount} COP\n\n` +
+    `Tienes *3 dias* para renovar antes de que el bot se pause.\n` +
+    `Envínos el comprobante de pago para reactivar de inmediato.\n\n` +
+    `_Jest Tech Solutions_`;
+
+  try {
+    await sendText(tenant.owner_phone, msg, tenant);
+    await _sendEmail(
+      `🔔 Renovacion vencida — ${storeName}`,
+      `<pre>${msg}</pre>`,
+      tenant
+    );
+    logger.info({ tenantSlug: tenant.slug }, '[Notify] Billing vencido notificado');
+  } catch (err) {
+    logger.error({ tenantSlug: tenant.slug, err: err.message }, '[Notify] Error notificando billing due');
+  }
+}
+
+/**
+ * Recordatorio durante el periodo de gracia (dias 1 y 2).
+ * @param {object} tenant
+ * @param {number} daysLeft - Dias restantes antes de suspension
+ */
+async function notifyBillingReminder(tenant, daysLeft) {
+  const storeName = tenant.bot_config?.business_name || tenant.name;
+  const msg =
+    `⚠️ *Recordatorio de pago — ${storeName}*\n\n` +
+    `Queda${daysLeft === 1 ? '' : 'n'} *${daysLeft} dia${daysLeft === 1 ? '' : 's'}* ` +
+    `para que tu bot se pause por falta de pago.\n\n` +
+    `Envínos el comprobante para evitar interrupciones.\n\n` +
+    `_Jest Tech Solutions_`;
+
+  try {
+    await sendText(tenant.owner_phone, msg, tenant);
+    logger.info({ tenantSlug: tenant.slug, daysLeft }, '[Notify] Recordatorio billing enviado');
+  } catch (err) {
+    logger.error({ tenantSlug: tenant.slug, err: err.message }, '[Notify] Error recordatorio billing');
+  }
+}
+
+/**
+ * Notifica al dueno que su bot fue suspendido por falta de pago.
+ * @param {object} tenant
+ */
+async function notifyBillingSuspended(tenant) {
+  const storeName = tenant.bot_config?.business_name || tenant.name;
+  const msg =
+    `🚫 *Bot pausado — ${storeName}*\n\n` +
+    `Tu bot fue pausado temporalmente por falta de pago.\n\n` +
+    `Para reactivarlo envínos tu comprobante de pago.\n` +
+    `La reactivacion es inmediata una vez confirmemos el pago.\n\n` +
+    `_Jest Tech Solutions_`;
+
+  try {
+    await sendText(tenant.owner_phone, msg, tenant);
+    await _sendEmail(
+      `🚫 Bot pausado — ${storeName}`,
+      `<pre>${msg}</pre>`,
+      tenant
+    );
+    logger.info({ tenantSlug: tenant.slug }, '[Notify] Suspension billing notificada');
+  } catch (err) {
+    logger.error({ tenantSlug: tenant.slug, err: err.message }, '[Notify] Error notificando suspension');
+  }
+}
+
+/**
+ * Notifica al admin (Jefferson) sobre eventos de billing.
+ * @param {'past_due'|'reminder'|'suspended'} event
+ * @param {object} tenant
+ * @param {{ daysOverdue?: number, daysLeft?: number }} [extra]
+ */
+async function notifyAdminBilling(event, tenant, extra = {}) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail) return;
+
+  const labels = {
+    past_due:  '🔔 Vencio hoy',
+    reminder:  '⚠️ En periodo de gracia',
+    suspended: '🚫 Suspendido',
+  };
+
+  const subject = `[Billing] ${labels[event] || event} — ${tenant.slug}`;
+  const body = `
+    <b>Evento:</b> ${event}<br>
+    <b>Tenant:</b> ${tenant.slug} (${tenant.name})<br>
+    <b>Plan:</b> ${tenant.plan || '-'}<br>
+    <b>Monto:</b> $${(tenant.billing_amount || 0).toLocaleString('es-CO')} COP<br>
+    <b>Proximo cobro:</b> ${tenant.next_billing_date || '-'}<br>
+    ${extra.daysOverdue !== undefined ? `<b>Dias vencido:</b> ${extra.daysOverdue}<br>` : ''}
+    ${extra.daysLeft    !== undefined ? `<b>Dias restantes:</b> ${extra.daysLeft}<br>` : ''}
+    <b>Owner phone:</b> ${tenant.owner_phone}<br>
+    <b>Owner email:</b> ${tenant.owner_email || '-'}
+  `;
+
+  const transporter = getTransporter();
+  if (!transporter) return;
+
+  try {
+    await transporter.sendMail({
+      from:    `"Jest Tech Billing" <${process.env.SMTP_USER}>`,
+      to:      adminEmail,
+      subject,
+      html:    body,
+    });
+  } catch (err) {
+    logger.error({ tenantSlug: tenant.slug, event, err: err.message }, '[Notify] Error notificando admin billing');
+  }
+}
+
+module.exports = {
+  notifySale, notifyAdvisorRequest, notifyLead,
+  notifyBillingDue, notifyBillingReminder, notifyBillingSuspended, notifyAdminBilling,
+};

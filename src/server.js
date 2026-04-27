@@ -21,13 +21,31 @@ const app                    = require('./app');
 const { closePool }          = require('./db');
 const { closeRedis }         = require('./redis');
 const { checkReactivations } = require('./core/flow-engine/engine');
+const { checkBillingCycle }  = require('./billing/billingService');
 const { getActiveSessions, saveState } = require('./core/state/manager');
 const tenantLoader           = require('./tenants/loader');
+
+// Calcula milisegundos hasta la proxima ocurrencia de `hour:00`
+function msUntilHour(hour) {
+  const now  = new Date();
+  const next = new Date();
+  next.setHours(hour, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return next - now;
+}
 
 const PORT = process.env.PORT || 3000;
 
 // ── Tareas periódicas ─────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
+  // Billing check diario a las 8am
+  setTimeout(function runBillingCheck() {
+    checkBillingCycle().catch((err) =>
+      logger.error({ err: err.message }, '[Server] Error en billing check')
+    );
+    setTimeout(runBillingCheck, 24 * 60 * 60 * 1000);
+  }, msUntilHour(8));
+
   // Reactivaciones cada hora — tenant-aware
   setInterval(async () => {
     const slugs = tenantLoader.cachedSlugs();

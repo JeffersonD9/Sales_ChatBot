@@ -1,10 +1,11 @@
-# Backlog post-produccion
+# Backlog — Roadmap de escalabilidad
 
-Abordar **una vez que el bot este generando ingresos**. Ordenado por impacto.
+Todo lo que hace falta para seguir creciendo, ordenado por prioridad.
+Abordar **una vez que el bot este generando ingresos**.
 
 ---
 
-## P0 — Semanas 2-3 post go-live
+## P0 — Semanas 2-3 post go-live (estabilidad)
 
 ### Tests del flow-engine (steps menu / catalog / order)
 Sin esto cualquier cambio al flujo puede romper la experiencia sin que nos demos cuenta.
@@ -20,7 +21,7 @@ Estimacion: 1.5 dias.
 
 ---
 
-## P1 — Mes 2
+## P1 — Mes 2 (calidad y observabilidad)
 
 ### Tests del parser y dispatcher
 `src/core/whatsapp/parser.js` y `src/webhooks/dispatcher.js` sin cobertura.
@@ -34,9 +35,13 @@ Estimacion: 1 dia.
 Condicion de carrera posible si dos requests actualizan config simultaneamente.
 Estimacion: 0.5 dias.
 
+### Script de renovacion masiva de billing
+Cuando sube el precio o cambia el plan de varios clientes a la vez.
+Estimacion: 0.5 dias.
+
 ---
 
-## P2 — Mes 2-3
+## P2 — Mes 2-3 (producto)
 
 ### Flow Engine declarativo (FASE 2)
 Soportar flujos distintos por cliente (lead capture, soporte, citas) sin tocar codigo.
@@ -44,128 +49,112 @@ Ver `docs/PLAN_MAESTRO.md` Fase 2.
 Estimacion: 3-4 semanas.
 
 ### UI admin para gestion de tenants
-Panel web para crear clientes, ver ordenes y actualizar productos sin usar psql.
+Panel web para crear clientes, ver ordenes, actualizar productos y registrar pagos
+sin usar psql ni CLI.
 Estimacion: 1 semana.
 
 ### Dashboard de ventas por cliente
 Resumen diario/semanal de ordenes y revenue por tenant.
 Estimacion: 1 semana.
 
+### Historial de pagos por tenant
+Tabla `billing_history` que registra cada pago: fecha, monto, metodo, registrado por.
+Util para facturacion y disputas.
+Estimacion: 0.5 dias.
+
 ---
 
 ## P3 — Escalabilidad de base de datos (sharding progresivo)
 
-### Contexto y estrategia
+Ver detalle completo en la seccion P3 existente del backlog.
 
-La DB actual (shard-01) es compartida por todos los tenants. Esto es correcto para
-empezar, pero a medida que crezca el numero de clientes y su volumen de datos,
-conviene distribuirlos entre multiples bases de datos.
+**Cuando activar:** mas de 400-500 productos activos por tenant, o mas de 500 mensajes/dia.
 
-**Umbral orientativo para mover un tenant a otro shard:**
-- Mas de 400-500 productos activos, O
-- Mas de 500 mensajes/dia sostenidos
+**Tareas:**
+- Connection router multi-shard en `db.js` (2-3 dias)
+- Script `migrate-tenant-shard.js` para mover tenant entre DBs (1 dia)
 
-**Regla de agrupacion:**
-- Maximo 3-4 tenants medianos por shard compartido
-- Tenants de alto volumen pasan a shard dedicado
-
-**El campo `db_shard` en la tabla `tenants` ya existe** (migration 003).
-Todos los tenants arrancan en `shard-01`. Cuando se migra uno, solo hay que
-actualizar ese campo y el router de conexiones hace el resto.
-
-```
-FASE 1 — hoy               FASE 2 — crecimiento          FASE 3 — escala
-────────────────────       ──────────────────────         ─────────────────────
-shard-01 (DB actual)       shard-01                       shard-01
-  cliente1                   cliente1 (~150 prods)          cliente1
-  cliente2                   cliente2 (~200 prods)          cliente2
-  clienteN                   cliente3 (~100 prods)
-                                                           shard-02
-                           shard-02                          cliente3
-                             cliente4 (~300 prods)           cliente4
-                             cliente5 (~250 prods)
-                                                           shard-03 (dedicado)
-                                                             clienteN (600 prods,
-                                                             alto volumen)
-```
+El campo `db_shard` ya existe en la tabla `tenants` (migration 003). Todos los tenants
+arrancan en `shard-01`. Cuando se migra uno: `UPDATE tenants SET db_shard = 'shard-02'`.
 
 ---
 
-### Tarea: Connection router multi-shard en `db.js`
+## P4 — Pasarela de pagos automatica
 
-**Cuando hacer esto:** al llegar al segundo shard (primer tenant que se migra).
+**Cuando activar:** mas de 5 clientes activos pagando manualmente.
 
-**Que hay que cambiar:**
+### Integracion con Wompi (Colombia) o MercadoPago
+Reemplaza el flujo manual de `mark-payment.js` por cobro automatico recurrente.
 
-`src/db.js` hoy es un singleton con un solo pool. Hay que convertirlo en un
-mapa de pools indexado por shard:
+**Como funciona:**
+1. Al crear un tenant, se crea una suscripcion recurrente en la pasarela
+2. La pasarela cobra automaticamente cada mes
+3. Un webhook de la pasarela notifica si el pago fue exitoso o fallo
+4. El webhook llama `billingService.recordPayment()` o activa la suspension
 
-```javascript
-// Antes
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+**Pasarelas recomendadas para Colombia:**
+- **Wompi** (Bancolombia) — mejor soporte local, PSE, tarjetas
+- **MercadoPago** — mayor penetracion en Latam, links de pago faciles
+- **Stripe** — mejor API pero mas friccion para clientes colombianos
 
-// Despues
-const pools = new Map();
+**Archivos a crear:**
+- `src/billing/wompiWebhook.js` — recibir eventos de pago
+- `src/billing/wompiClient.js` — crear/cancelar suscripciones
+- `migrations/005_billing_history.sql` — historial de transacciones
 
-function getPoolForShard(shardId) {
-  if (pools.has(shardId)) return pools.get(shardId);
-  const url = process.env[`DATABASE_URL_${shardId.toUpperCase().replace('-','_')}`];
-  // Ej: DATABASE_URL_SHARD_01, DATABASE_URL_SHARD_02
-  const pool = new Pool({ connectionString: url, max: 20, ... });
-  pools.set(shardId, pool);
-  return pool;
-}
-```
-
-Cada query necesita saber el shard del tenant antes de ejecutarse.
-El tenant loader ya cachea el objeto completo del tenant (incluye `db_shard`),
-asi que el dato esta disponible en cada request sin query extra.
-
-**Archivos a modificar:**
-- `src/db.js` — convertir singleton a mapa de pools
-- `src/tenants/loader.js` — exponer `db_shard` en el objeto cacheado (ya lo trae de DB)
-- `src/core/state/manager.js` — pasar shard al hacer queries de sesion
-- `src/core/flow-engine/engine.js` — pasar shard al llamar handlers
-- `src/tenants/repository.js` — queries de tenants siguen en shard-01 (el registro central)
-- `.env` — agregar `DATABASE_URL_SHARD_02`, `DATABASE_URL_SHARD_03`, etc.
-
-**Estimacion:** 2-3 dias + 1 dia de tests.
+Estimacion: 3-4 dias.
 
 ---
 
-### Tarea: Script de migracion de tenant entre shards
+## P5 — Infraestructura avanzada
 
-Script CLI para mover todos los datos de un tenant de un shard a otro
-sin downtime (copiar → verificar → activar → borrar origen).
+### Multi-region / alta disponibilidad
+Replicacion de PostgreSQL (primary + read replica) para tolerancia a fallos.
+Estimacion: 2 dias.
 
-```bash
-node scripts/migrate-tenant-shard.js \
-  --slug=boutique-grande \
-  --from=shard-01 \
-  --to=shard-02
-```
+### CDN para imagenes de productos
+Las imagenes de productos hoy son URLs externas. Servir desde CDN propio
+(Cloudflare R2 o similar) reduce dependencia de URLs de terceros y mejora velocidad.
+Estimacion: 1 dia.
 
-**Pasos internos del script:**
-1. Volcar `products`, `sessions`, `orders`, `tenant_whatsapp_config` del tenant
-2. Insertar en la DB destino
-3. Verificar conteos (origen == destino)
-4. `UPDATE tenants SET db_shard = 'shard-02' WHERE slug = '...'`
-5. Invalidar cache del tenant en Redis
-6. Borrar datos del origen
+### Monitoreo de uptime y alertas
+Configurar UptimeRobot o Betterstack para alertar si `/health` deja de responder.
+Estimacion: 0.5 dias (configuracion, sin codigo).
 
-**Estimacion:** 1 dia.
+### Backup offsite automatico
+Los backups diarios hoy se guardan en el mismo VPS. Moverlos a S3 o similar.
+Estimacion: 0.5 dias.
+
+### Deploy automatico (CI/CD)
+GitHub Actions que corre tests, construye imagen y hace deploy al VPS
+cuando se hace push a main.
+Estimacion: 1 dia.
 
 ---
 
-### Variables de entorno necesarias al activar shard-02
+## P6 — Crecimiento del producto
 
-```env
-# Shard 01 (actual)
-DATABASE_URL_SHARD_01=postgresql://app:PASSWORD@postgres-01:5432/whatsapp_saas
+### Self-service onboarding
+Panel donde el cliente mismo crea su cuenta, conecta su WhatsApp y configura su bot
+sin intervension manual de Jefferson. Reduce tiempo de onboarding de dias a minutos.
+Estimacion: 1-2 semanas.
 
-# Shard 02 (cuando se active)
-DATABASE_URL_SHARD_02=postgresql://app:PASSWORD@postgres-02:5432/whatsapp_saas
-```
+### White-label
+Opcion para que revendedores (agencias) ofrezcan el bot bajo su propia marca.
+Requiere dominio personalizado por tenant y logo en las notificaciones.
+Estimacion: 1 semana.
 
-El `DATABASE_URL` existente pasa a ser el alias de `shard-01` y el registro
-central de tenants (la tabla `tenants` siempre vive en shard-01).
+### Analytics de conversion por tenant
+- Cuantos chats iniciaron vs cuantos terminaron en pedido
+- Tasa de abandono por paso del flujo
+- Productos mas consultados vs mas vendidos
+Estimacion: 1 semana.
+
+### Mensajes de campana (outbound)
+Enviar mensajes masivos a clientes previos (reactivacion, ofertas).
+Requiere aprobacion de Meta para templates de mensajes iniciados por empresa.
+Estimacion: 1 semana.
+
+### Soporte multi-idioma
+Textos del bot configurables por idioma. Util para expandir a otros paises.
+Estimacion: 3-4 dias.
