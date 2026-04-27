@@ -16,7 +16,12 @@ function getPool() {
     return null; // sin DB en demo/test
   }
 
-  pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  pool = new Pool({
+    connectionString:        process.env.DATABASE_URL,
+    max:                     20,
+    idleTimeoutMillis:       30000,
+    connectionTimeoutMillis: 2000,
+  });
 
   pool.on('error', (err) => {
     logger.error({ err: err.message }, '[DB] Error inesperado en el pool');
@@ -52,4 +57,11 @@ async function healthCheck() {
   }
 }
 
-module.exports = { query, healthCheck, getPool };
+async function closePool() {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
+}
+
+module.exports = { query, healthCheck, getPool, closePool };

@@ -18,6 +18,8 @@ const { logger }             = require('./utils/logger');
 validateEnv();
 
 const app                    = require('./app');
+const { closePool }          = require('./db');
+const { closeRedis }         = require('./redis');
 const { checkReactivations } = require('./core/flow-engine/engine');
 const { getActiveSessions, saveState } = require('./core/state/manager');
 const tenantLoader           = require('./tenants/loader');
@@ -55,11 +57,11 @@ const server = app.listen(PORT, () => {
 // ── Apagado graceful ──────────────────────────────────────────────────────
 function shutdown(signal) {
   logger.info({ signal }, '[Server] Apagando servidor...');
-  server.close(() => {
+  server.close(async () => {
+    await Promise.allSettled([closePool(), closeRedis()]);
     logger.info('[Server] Conexiones cerradas. Adios!');
     process.exit(0);
   });
-  // Forzar apagado si tarda más de 10 segundos
   setTimeout(() => process.exit(1), 10000);
 }
 

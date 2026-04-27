@@ -33,4 +33,11 @@ async function redisHealthCheck() {
   }
 }
 
-module.exports = { getRedis, redisHealthCheck };
+async function closeRedis() {
+  if (client) {
+    await client.quit().catch(() => client.disconnect());
+    client = null;
+  }
+}
+
+module.exports = { getRedis, redisHealthCheck, closeRedis };
