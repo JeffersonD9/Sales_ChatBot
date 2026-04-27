@@ -22,14 +22,6 @@ async function loadTenantCredentials(tenantId) {
   return rows[0] || null;
 }
 
-async function initializeBotForTenant(tenantId) {
-  const config = await getConfig(tenantId);
-  if (!config)          throw new Error(`Bot no configurado para tenant ${tenantId}`);
-  if (!config.is_active) throw new Error(`Bot desactivado para tenant ${tenantId}`);
-  logger.info({ tenantId }, '[BotService] Bot inicializado');
-  return config;
-}
-
 async function handleIncomingMessage(tenantId, waFrom, message) {
   try {
     const text = sanitizeInput(message?.text?.body ?? message?.body ?? '');
@@ -73,4 +65,4 @@ async function updateBotConfig(tenantId, newConfig) {
   return updated;
 }
 
-module.exports = { initializeBotForTenant, handleIncomingMessage, updateBotConfig };
+module.exports = { handleIncomingMessage, updateBotConfig };

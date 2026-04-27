@@ -22,9 +22,4 @@ function capitalizeName(name) {
     .join(' ');
 }
 
-function truncate(text, maxLength = 20) {
-  if (!text) return '';
-  return text.length > maxLength ? text.slice(0, maxLength - 1) + '\u2026' : text;
-}
-
-module.exports = { formatPrice, formatPhone, capitalizeName, truncate };
+module.exports = { formatPrice, formatPhone, capitalizeName };
