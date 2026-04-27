@@ -60,6 +60,12 @@ async function main() {
     process.exit(1);
   }
 
+  if (!/^[a-z0-9-]+$/.test(params.slug)) {
+    console.error(`❌ Slug inválido: "${params.slug}"`);
+    console.error('   Solo se permiten letras minúsculas, números y guiones. Ej: boutique-ana');
+    process.exit(1);
+  }
+
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
   try {

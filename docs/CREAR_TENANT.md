@@ -4,7 +4,7 @@
 
 | Parámetro | Flag | Requerido | Ejemplo |
 |-----------|------|-----------|---------|
-| Slug (URL-friendly) | `--slug` | ✅ | `boutique-ana` |
+| Slug (URL-friendly) | `--slug` | ✅ | `boutique-ana` — solo minúsculas, números y guiones |
 | Nombre del negocio | `--name` | ✅ | `"Boutique Ana"` |
 | WhatsApp Access Token | `--wa-token` | ✅ | `EAAxxxxxxxxxxxxx` |
 | Phone Number ID (Meta) | `--phone-id` | ✅ | `123456789012345` |
@@ -59,11 +59,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
 
 ```bash
 # Confirmar que el tenant quedó activo en la DB
-docker compose exec postgres psql -U app -d whatsapp_saas \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres \
+  psql -U app -d whatsapp_saas \
   -c "SELECT slug, name, status, owner_phone FROM tenants WHERE slug='SLUG';"
 
-# Probar que el webhook GET responde con el challenge
-curl "http://localhost:3000/webhook/SLUG?hub.mode=subscribe&hub.verify_token=VERIFY_TOKEN&hub.challenge=12345"
+# Probar que el webhook GET responde con el challenge (usar el dominio real, no localhost)
+curl "https://bots.jesttech.com/webhook/SLUG?hub.mode=subscribe&hub.verify_token=VERIFY_TOKEN&hub.challenge=12345"
 # Debe responder: 12345
 ```
 
@@ -72,7 +73,8 @@ curl "http://localhost:3000/webhook/SLUG?hub.mode=subscribe&hub.verify_token=VER
 ## Rollback
 
 ```bash
-docker compose exec postgres psql -U app -d whatsapp_saas \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec postgres \
+  psql -U app -d whatsapp_saas \
   -c "DELETE FROM tenants WHERE slug='SLUG';"
 ```
 
