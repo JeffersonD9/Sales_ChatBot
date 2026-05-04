@@ -141,7 +141,8 @@ async function handleDecisionProducto(phone, session, txt, id, tenant, notifier)
     return;
   }
 
-  await sendText(phone, '\u00bfQu\u00e9 decides? Usa los botones de arriba o escribe *s\u00ed*, *duda* o *no*.', tenant);
+  // Input no reconocido — señalizar al caller para que use el fallback
+  return false;
 }
 
 // ── PASO: Objeción ────────────────────────────────────────────────────────

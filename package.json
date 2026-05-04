@@ -16,11 +16,14 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/tests/**/*.test.js"],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
     "clearMocks": true,
     "verbose": true
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

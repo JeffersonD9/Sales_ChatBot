@@ -91,9 +91,9 @@ async function handleMenu(phone, session, txt, id, tenant, notifier) {
     return;
   }
 
-  // ── Opción no reconocida ──────────────────────────────────────────────
-  await sendText(phone, '\uD83E\uDD14 No entend\u00ed esa opci\u00f3n. Usa el men\u00fa:', tenant);
-  await sendMainMenu(phone, session, tenant);
+  // ── Opción no reconocida — señalizar al caller para que use el fallback ─
+  return false;
+
 }
 
 module.exports = { sendMainMenu, handleMenu };

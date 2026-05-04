@@ -28,8 +28,9 @@ const {
   handleOrderPayment,
   handleCheckOrder,
 } = require('./steps/order');
+const { handleWithAI }              = require('../ai/aiHandler');
 
-const GLOBAL_RESET_CMDS = new Set(['menu', 'men\u00fa', 'inicio', 'hola', 'hi', 'start', '0']);
+const GLOBAL_RESET_CMDS = new Set(['menu', 'menú', 'inicio', 'hola', 'hi', 'start', '0']);
 
 /**
  * Procesa un mensaje entrante y despacha al handler correcto.
@@ -44,7 +45,7 @@ async function processMessage(phone, rawMsg, session, tenant, notifier) {
   const { type, text, interactiveId } = extractInput(rawMsg);
 
   if (type === 'unsupported') {
-    await sendText(phone, '\uD83D\uDCF1 Solo proceso mensajes de texto y botones. Usa el men\u00fa principal:', tenant);
+    await sendText(phone, '📱 Solo proceso mensajes de texto y botones. Usa el menú principal:', tenant);
     await sendMainMenu(phone, session, tenant);
     return;
   }
@@ -60,9 +61,20 @@ async function processMessage(phone, rawMsg, session, tenant, notifier) {
 
   switch (session.step) {
     case STEP.NEW:
-    case STEP.MENU:
-      await handleMenu(phone, session, txt, id, tenant, notifier);
+    case STEP.MENU: {
+      // Punto 1: si handleMenu no reconoce la entrada, intentar con IA
+      const handled = await handleMenu(phone, session, txt, id, tenant, notifier);
+      if (handled === false) {
+        const aiReply = await handleWithAI(phone, text, session, tenant);
+        if (aiReply) {
+          await sendText(phone, aiReply, tenant);
+        } else {
+          await sendText(phone, '🤔 No entendí esa opción. Usa el menú:', tenant);
+          await sendMainMenu(phone, session, tenant);
+        }
+      }
       break;
+    }
 
     case STEP.CATALOG_TALLA:
       await handleTalla(phone, session, txt, tenant);
@@ -72,9 +84,19 @@ async function processMessage(phone, rawMsg, session, tenant, notifier) {
       await handlePresupuesto(phone, session, txt, tenant, notifier);
       break;
 
-    case STEP.CATALOG_SHOWING:
-      await handleDecisionProducto(phone, session, txt, id, tenant, notifier);
+    case STEP.CATALOG_SHOWING: {
+      // Punto 2: si el cliente escribe algo que no es una decisión válida, intentar con IA
+      const handled = await handleDecisionProducto(phone, session, txt, id, tenant, notifier);
+      if (handled === false) {
+        const aiReply = await handleWithAI(phone, text, session, tenant);
+        if (aiReply) {
+          await sendText(phone, aiReply, tenant);
+        } else {
+          await sendText(phone, '¿Qué decides? Usa los botones o escribe *sí*, *duda* o *no*.', tenant);
+        }
+      }
       break;
+    }
 
     case STEP.CATALOG_SELECTING:
       await handleProductSelection(phone, session, txt, tenant);
@@ -130,9 +152,9 @@ async function checkReactivations(tenant, getActiveSessions, saveState) {
     if (hadInteraction && isInactive && !session.reactivationSent) {
       try {
         await sendText(session.waFrom,
-          `\uD83D\uDC4B \u00a1Hola! Han pasado 30 d\u00edas desde tu \u00faltima visita a *${storeName}*.\n\n` +
-          `Tenemos novedades y ofertas especiales \uD83D\uDECD\uFE0F\n\n` +
-          `Escribe *Hola* para ver el cat\u00e1logo actualizado.`,
+          `👋 ¡Hola! Han pasado 30 días desde tu última visita a *${storeName}*.\n\n` +
+          `Tenemos novedades y ofertas especiales 🛍️\n\n` +
+          `Escribe *Hola* para ver el catálogo actualizado.`,
           tenant
         );
         session.reactivationSent = true;

@@ -125,7 +125,7 @@ async function notifyLead(clientPhone, reason = '', tenant) {
 }
 
 /**
- * Notifica al dueno del negocio que su suscripcion vencio hoy.
+ * Notifica al dueño del negocio que su suscripcion vencio hoy.
  * @param {object} tenant
  */
 async function notifyBillingDue(tenant) {
@@ -135,17 +135,17 @@ async function notifyBillingDue(tenant) {
     : 'el valor acordado';
 
   const msg =
-    `🔔 *Renovacion vencida — ${storeName}*\n\n` +
-    `Tu suscripcion del bot vencio hoy.\n` +
+    `🔔 *Renovación vencida — ${storeName}*\n\n` +
+    `Tu suscripción del bot venció hoy.\n` +
     `💰 *Valor:* ${amount} COP\n\n` +
-    `Tienes *3 dias* para renovar antes de que el bot se pause.\n` +
-    `Envínos el comprobante de pago para reactivar de inmediato.\n\n` +
+    `Tienes *3 días* para renovar antes de que el bot se pause.\n` +
+    `Envíanos el comprobante de pago para reactivar de inmediato.\n\n` +
     `_Jest Tech Solutions_`;
 
   try {
     await sendText(tenant.owner_phone, msg, tenant);
     await _sendEmail(
-      `🔔 Renovacion vencida — ${storeName}`,
+      `🔔 Renovación vencida — ${storeName}`,
       `<pre>${msg}</pre>`,
       tenant
     );
@@ -166,7 +166,7 @@ async function notifyBillingReminder(tenant, daysLeft) {
     `⚠️ *Recordatorio de pago — ${storeName}*\n\n` +
     `Queda${daysLeft === 1 ? '' : 'n'} *${daysLeft} dia${daysLeft === 1 ? '' : 's'}* ` +
     `para que tu bot se pause por falta de pago.\n\n` +
-    `Envínos el comprobante para evitar interrupciones.\n\n` +
+    `Envíanos el comprobante para evitar interrupciones.\n\n` +
     `_Jest Tech Solutions_`;
 
   try {
