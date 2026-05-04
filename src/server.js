@@ -20,10 +20,11 @@ validateEnv();
 const app                    = require('./app');
 const { closePool }          = require('./db');
 const { closeRedis }         = require('./redis');
-const { checkReactivations } = require('./core/flow-engine/engine');
-const { checkBillingCycle }  = require('./billing/billingService');
+const { checkReactivations }   = require('./core/flow-engine/engine');
+const { checkBillingCycle }    = require('./billing/billingService');
 const { getActiveSessions, saveState } = require('./core/state/manager');
-const tenantLoader           = require('./tenants/loader');
+const { cleanExpiredSessions } = require('./panel/auth/service');
+const tenantLoader             = require('./tenants/loader');
 
 // Calcula milisegundos hasta la proxima ocurrencia de `hour:00`
 function msUntilHour(hour) {
@@ -45,6 +46,13 @@ if (process.env.NODE_ENV !== 'test') {
     );
     setTimeout(runBillingCheck, 24 * 60 * 60 * 1000);
   }, msUntilHour(8));
+
+  // Limpieza de sesiones del panel expiradas — cada hora
+  setInterval(() => {
+    cleanExpiredSessions().catch((err) =>
+      logger.error({ err: err.message }, '[Server] Error limpiando sesiones panel')
+    );
+  }, 60 * 60 * 1000);
 
   // Reactivaciones cada hora — tenant-aware
   setInterval(async () => {

@@ -6,9 +6,38 @@
  * del objeto `tenant` (cargado desde PostgreSQL por el tenant loader).
  *
  * Todas las funciones son puras: misma entrada → misma salida, sin efectos secundarios.
+ *
+ * Compatibilidad de tallas:
+ *   - Legacy (ropa): sizes TEXT[] — ["S","M","L"]
+ *   - Nuevo (genérico): attributes JSONB — { "talla":"M", "numero":42, ... }
+ *   La función _matchesTalla soporta ambos formatos.
+ *   Si el producto no tiene info de talla en ningún campo, se incluye siempre.
  */
 
 const MAX_PRODUCTS_SHOWN = 3;
+
+/**
+ * Determina si un producto coincide con la talla buscada.
+ * Soporta sizes[] (legacy) y attributes JSONB (nuevo).
+ *
+ * @param {object} product
+ * @param {string} talla
+ * @returns {boolean}
+ */
+function _matchesTalla(product, talla) {
+  // Formato legacy: sizes TEXT[]
+  if (product.sizes && product.sizes.length > 0) {
+    return product.sizes.includes(talla);
+  }
+  // Formato nuevo: attributes JSONB — busca el valor en cualquier campo
+  if (product.attributes && Object.keys(product.attributes).length > 0) {
+    return Object.values(product.attributes).some(
+      (v) => String(v).toLowerCase() === String(talla).toLowerCase()
+    );
+  }
+  // Sin info de talla: siempre coincide (ej: joyas, accesorios únicos)
+  return true;
+}
 
 /**
  * Filtra productos por talla y presupuesto máximo.
@@ -22,7 +51,7 @@ const MAX_PRODUCTS_SHOWN = 3;
  */
 function filterProducts(products, talla, budget) {
   return (products || [])
-    .filter((p) => p.stock && p.sizes.includes(talla) && p.price <= budget)
+    .filter((p) => p.stock && _matchesTalla(p, talla) && p.price <= budget)
     .sort((a, b) => b.price - a.price)
     .slice(0, MAX_PRODUCTS_SHOWN);
 }
@@ -38,7 +67,7 @@ function filterProducts(products, talla, budget) {
  */
 function getAlternatives(products, talla, excludeIds = [], limit = 2) {
   return (products || [])
-    .filter((p) => p.stock && p.sizes.includes(talla) && !excludeIds.includes(p.id))
+    .filter((p) => p.stock && _matchesTalla(p, talla) && !excludeIds.includes(p.id))
     .slice(0, limit);
 }
 
@@ -52,7 +81,7 @@ function getStoreInfo(tenant) {
   return {
     name:     cfg.business_name || tenant?.name || 'La Tienda',
     city:     cfg.city          || 'Colombia',
-    schedule: cfg.schedule      || 'Lun\u2013S\u00e1b 9am\u20137pm',
+    schedule: cfg.schedule      || 'Lun–Sáb 9am–7pm',
   };
 }
 

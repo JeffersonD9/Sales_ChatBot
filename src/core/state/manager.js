@@ -18,6 +18,13 @@ const { logger } = require('../../utils/logger');
 /** @type {Map<string, object>} L1 cache */
 const sessions = new Map();
 
+/**
+ * Promesas en vuelo para getState: evita que dos mensajes simultáneos del
+ * mismo usuario disparen dos queries a DB cuando ambos tienen cache miss.
+ * @type {Map<string, Promise<object>>}
+ */
+const pending = new Map();
+
 const isDemo = () => process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test';
 
 function _key(tenantSlug, waFrom) {
@@ -43,6 +50,9 @@ function _defaultSession(tenantSlug, waFrom) {
  * Retorna el estado de la conversación. Si no existe, crea uno nuevo.
  * Primero busca en L1, luego en PostgreSQL.
  *
+ * El mutex `pending` evita que dos mensajes simultáneos con cache miss
+ * disparen queries duplicadas a DB para la misma sesión.
+ *
  * @param {string} tenantSlug
  * @param {string} waFrom
  * @returns {Promise<object>}
@@ -50,51 +60,61 @@ function _defaultSession(tenantSlug, waFrom) {
 async function getState(tenantSlug, waFrom) {
   const key = _key(tenantSlug, waFrom);
 
-  if (sessions.has(key)) {
-    return sessions.get(key);
-  }
+  if (sessions.has(key)) return sessions.get(key);
 
-  // Cache miss → buscar en DB (en producción)
+  // Si hay un fetch en vuelo para esta misma clave, reusar la misma promesa
+  if (pending.has(key)) return pending.get(key);
+
   if (!isDemo()) {
-    try {
-      const result = await query(
-        `SELECT step, data, shown_products, last_activity, reactivation_sent, created_at
-         FROM sessions
-         WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $1)
-           AND wa_from = $2`,
-        [tenantSlug, waFrom]
-      );
+    const promise = (async () => {
+      try {
+        const result = await query(
+          `SELECT step, data, shown_products, last_activity, reactivation_sent, created_at
+           FROM sessions
+           WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $1)
+             AND wa_from = $2`,
+          [tenantSlug, waFrom]
+        );
 
-      if (result.rows[0]) {
-        const row = result.rows[0];
-        const session = {
-          tenantSlug,
-          waFrom,
-          step:             row.step,
-          data:             row.data || {},
-          shownProducts:    row.shown_products || [],
-          lastActivity:     new Date(row.last_activity).getTime(),
-          reactivationSent: row.reactivation_sent || false,
-          createdAt:        new Date(row.created_at).getTime(),
-        };
-        sessions.set(key, session);
-        return session;
+        if (result.rows[0]) {
+          const row     = result.rows[0];
+          const session = {
+            tenantSlug,
+            waFrom,
+            step:             row.step,
+            data:             row.data || {},
+            shownProducts:    row.shown_products || [],
+            lastActivity:     new Date(row.last_activity).getTime(),
+            reactivationSent: row.reactivation_sent || false,
+            createdAt:        new Date(row.created_at).getTime(),
+          };
+          sessions.set(key, session);
+          return session;
+        }
+      } catch (err) {
+        logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error leyendo sesión de DB');
+      } finally {
+        pending.delete(key);
       }
-    } catch (err) {
-      logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error leyendo sesión de DB');
-    }
+
+      const session = _defaultSession(tenantSlug, waFrom);
+      sessions.set(key, session);
+      return session;
+    })();
+
+    pending.set(key, promise);
+    return promise;
   }
 
-  // Sesión nueva
   const session = _defaultSession(tenantSlug, waFrom);
   sessions.set(key, session);
   return session;
 }
 
 /**
- * Persiste el estado en L1 y en PostgreSQL.
- * La escritura a DB es no-bloqueante desde la perspectiva del llamador:
- * el Map se actualiza sincrónicamente, la DB en background.
+ * Persiste el estado en L1 y en PostgreSQL (await — no fire-and-forget).
+ * Garantiza que si el proceso cae después de responder al usuario, el estado
+ * ya está en DB antes de que saveState retorne.
  *
  * @param {string} tenantSlug
  * @param {string} waFrom
@@ -109,36 +129,33 @@ async function saveState(tenantSlug, waFrom, session) {
 
   if (isDemo()) return;
 
-  // Persistir en DB (no bloquea el flujo principal)
-  setImmediate(async () => {
-    try {
-      await query(
-        `INSERT INTO sessions
-           (tenant_id, wa_from, step, data, shown_products, last_activity, reactivation_sent)
-         VALUES (
-           (SELECT id FROM tenants WHERE slug = $1),
-           $2, $3, $4, $5, to_timestamp($6 / 1000.0), $7
-         )
-         ON CONFLICT (tenant_id, wa_from) DO UPDATE
-         SET step             = $3,
-             data             = $4,
-             shown_products   = $5,
-             last_activity    = to_timestamp($6 / 1000.0),
-             reactivation_sent = $7`,
-        [
-          tenantSlug,
-          waFrom,
-          session.step,
-          JSON.stringify(session.data),
-          JSON.stringify(session.shownProducts),
-          session.lastActivity,
-          session.reactivationSent,
-        ]
-      );
-    } catch (err) {
-      logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error persistiendo sesión en DB');
-    }
-  });
+  try {
+    await query(
+      `INSERT INTO sessions
+         (tenant_id, wa_from, step, data, shown_products, last_activity, reactivation_sent)
+       VALUES (
+         (SELECT id FROM tenants WHERE slug = $1),
+         $2, $3, $4, $5, to_timestamp($6 / 1000.0), $7
+       )
+       ON CONFLICT (tenant_id, wa_from) DO UPDATE
+       SET step              = $3,
+           data              = $4,
+           shown_products    = $5,
+           last_activity     = to_timestamp($6 / 1000.0),
+           reactivation_sent = $7`,
+      [
+        tenantSlug,
+        waFrom,
+        session.step,
+        JSON.stringify(session.data),
+        JSON.stringify(session.shownProducts),
+        session.lastActivity,
+        session.reactivationSent,
+      ]
+    );
+  } catch (err) {
+    logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error persistiendo sesión en DB');
+  }
 }
 
 /**
@@ -152,18 +169,16 @@ async function clearState(tenantSlug, waFrom) {
 
   if (isDemo()) return;
 
-  setImmediate(async () => {
-    try {
-      await query(
-        `DELETE FROM sessions
-         WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $1)
-           AND wa_from = $2`,
-        [tenantSlug, waFrom]
-      );
-    } catch (err) {
-      logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error eliminando sesión');
-    }
-  });
+  try {
+    await query(
+      `DELETE FROM sessions
+       WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $1)
+         AND wa_from = $2`,
+      [tenantSlug, waFrom]
+    );
+  } catch (err) {
+    logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error eliminando sesión');
+  }
 }
 
 /**
@@ -188,6 +203,7 @@ function getActiveSessions(tenantSlug) {
  */
 function _resetForTest() {
   sessions.clear();
+  pending.clear();
 }
 
 module.exports = { getState, saveState, clearState, getActiveSessions, _resetForTest };

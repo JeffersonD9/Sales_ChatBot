@@ -18,6 +18,9 @@ const botConfigSchema = z.object({
     notify_owner:     z.boolean().default(true),
   }),
   fallback_message: z.string().max(500).optional(),
+  // Prompt personalizado para el asistente IA de este tenant.
+  // Se añade al final del system prompt base como instrucciones adicionales.
+  ai_system_prompt: z.string().min(1).max(2000).optional(),
 });
 
 function validateBotConfig(data) {

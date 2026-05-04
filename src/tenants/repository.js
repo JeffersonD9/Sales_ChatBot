@@ -37,6 +37,7 @@ async function findBySlug(slug) {
              'description', p.description,
              'price',       p.price,
              'sizes',       p.sizes,
+             'attributes',  p.attributes,
              'image_url',   p.image_url,
              'emoji',       p.emoji,
              'category',    p.category,

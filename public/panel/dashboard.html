@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>Dashboard — WhatsApp SaaS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d0f16;
+      --surface:     #161922;
+      --surface-2:   #1e2130;
+      --surface-3:   #252840;
+      --border:      #272b3d;
+      --border-2:    #323654;
+      --primary:     #5b7fff;
+      --primary-dim: rgba(91, 127, 255, 0.12);
+      --danger:      #ff5f5f;
+      --danger-dim:  rgba(255, 95, 95, 0.12);
+      --success:     #3ecf8e;
+      --success-dim: rgba(62, 207, 142, 0.12);
+      --warning:     #f59e0b;
+      --warning-dim: rgba(245, 158, 11, 0.12);
+      --text:        #e2e4ed;
+      --text-2:      #b8bcd0;
+      --muted:       #7b8299;
+      --radius:      10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text); font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Auth guard overlay ── */
+    #auth-guard {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+      transition: opacity .25s;
+    }
+    #auth-guard.hidden { opacity: 0; pointer-events: none; }
+    .guard-inner { text-align: center; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border-2);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .guard-inner p { color: var(--muted); font-size: 13px; }
+
+    /* ── Layout ── */
+    #app { display: none; min-height: 100vh; }
+    #app.ready { display: block; }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex; align-items: center; gap: 16px;
+      position: sticky; top: 0; z-index: 50;
+    }
+    .header-logo { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .header-logo .icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: var(--primary-dim);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .header-logo span { font-weight: 700; font-size: 15px; }
+    .header-logo small { color: var(--muted); font-size: 11px; margin-left: 4px; font-weight: 400; }
+
+    #user-badge {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 12px 4px 8px; font-size: 13px;
+    }
+    .user-avatar {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--primary-dim); color: var(--primary);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px; display: flex; gap: 0;
+    }
+    .tab-btn {
+      padding: 14px 20px; border: none; background: none; cursor: pointer;
+      font-size: 13px; font-weight: 500;
+      color: var(--muted); border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .tab-btn:hover:not(.active) { color: var(--text-2); }
+    #tab-productos { display: none; }
+
+    /* ── Container ── */
+    .container { padding: 28px 24px; max-width: 1280px; margin: 0 auto; }
+    .tab-panel  { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Section header ── */
+    .section-header {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+    }
+    .section-header h3 { font-size: 15px; font-weight: 600; flex: 1; }
+    .section-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Stats ── */
+    .stats-row { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+      flex: 1; min-width: 180px; position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--primary); opacity: .4;
+    }
+    .stat-card .label { color: var(--muted); font-size: 11px; font-weight: 600;
+                        text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; }
+    .stat-card .hint  { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    /* ── Tabla ── */
+    .table-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: auto;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: var(--surface-2); text-align: left; padding: 11px 16px;
+      font-size: 11px; color: var(--muted); font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+    }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text-2); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface-2); color: var(--text); }
+    .td-main { font-weight: 500; color: var(--text); }
+    .td-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Chips ── */
+    .chip {
+      display: inline-flex; align-items: center;
+      padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+      gap: 4px;
+    }
+    .chip-default { background: var(--surface-3); color: var(--text-2); }
+    .chip-primary { background: var(--primary-dim); color: var(--primary); }
+    .chip-success { background: var(--success-dim); color: var(--success); }
+    .chip-danger  { background: var(--danger-dim);  color: var(--danger);  }
+    .chip-warning { background: var(--warning-dim); color: var(--warning); }
+
+    /* ── Botones ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 500; transition: opacity .15s, transform .1s;
+      white-space: nowrap;
+    }
+    .btn:hover    { opacity: .88; }
+    .btn:active   { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .btn-primary  { background: var(--primary); color: #fff; }
+    .btn-danger   { background: var(--danger);  color: #fff; }
+    .btn-ghost    { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--border-2); }
+    .btn-sm       { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
+    .btn-logout   { background: none; border: 1px solid var(--border); color: var(--muted);
+                    border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+                    transition: all .15s; }
+    .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; padding: 20px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0,0,0,.5);
+      padding: 28px; width: 500px; max-width: 100%;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal-title {
+      font-size: 16px; font-weight: 700; margin-bottom: 6px;
+    }
+    .modal-sub {
+      font-size: 12px; color: var(--muted); margin-bottom: 22px;
+    }
+    .form-row { margin-bottom: 14px; }
+    .form-row label {
+      display: block; font-size: 11px; font-weight: 600;
+      color: var(--muted); margin-bottom: 5px;
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .form-row label .req { color: var(--danger); }
+    .form-row input,
+    .form-row select {
+      width: 100%;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 12px;
+      font-size: 14px; color: var(--text); outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .form-row input::placeholder { color: var(--muted); opacity: .5; }
+    .form-row input:focus,
+    .form-row select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-dim);
+    }
+    .form-row select { appearance: none; cursor: pointer; }
+    .form-row select option { background: var(--surface-2); }
+    .slug-preview {
+      font-size: 11px; color: var(--muted); margin-top: 5px;
+    }
+    .slug-preview strong { color: var(--primary); font-family: monospace; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; border-top: 1px solid var(--border); padding-top: 18px; }
+    .modal-divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text); padding: 12px 18px;
+      border-radius: 10px; font-size: 13px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.4);
+      opacity: 0; transform: translateY(8px);
+      transition: opacity .25s, transform .25s;
+      pointer-events: none; z-index: 999; max-width: 360px;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.err  { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
+    #toast.ok   { border-color: var(--success); background: var(--success-dim); color: var(--success); }
+
+    .empty-state { padding: 48px 24px; text-align: center; color: var(--muted); font-size: 13px; }
+    code { font-family: monospace; font-size: 12px; background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<!-- Auth guard: cubre toda la página hasta que se confirma la sesión -->
+<div id="auth-guard">
+  <div class="guard-inner">
+    <div class="spinner"></div>
+    <p>Verificando sesión...</p>
+  </div>
+</div>
+
+<!-- App — oculta hasta auth confirmada -->
+<div id="app">
+
+  <header>
+    <div class="header-logo">
+      <div class="icon">🤖</div>
+      <span>WhatsApp SaaS <small>Admin</small></span>
+    </div>
+    <div id="user-badge">
+      <div class="user-avatar" id="user-avatar">J</div>
+      <span id="user-name">—</span>
+    </div>
+    <button class="btn-logout" id="btn-logout">Cerrar sesión</button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="inicio">Inicio</button>
+    <button class="tab-btn"       data-tab="tenants">Tenants</button>
+    <button class="tab-btn" id="tab-productos" data-tab="productos" style="display:none">Productos</button>
+  </nav>
+
+  <div class="container">
+
+    <!-- ── Tab: Inicio ── -->
+    <div id="panel-inicio" class="tab-panel active">
+      <div class="stats-row" id="global-stats">
+        <div class="stat-card">
+          <div class="label">Tenants activos</div>
+          <div class="value" id="stat-tenants">—</div>
+          <div class="hint">clientes en la plataforma</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Sesiones activas</div>
+          <div class="value" id="stat-sessions">—</div>
+          <div class="hint">conversaciones en curso</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Llamadas IA (mes)</div>
+          <div class="value" id="stat-ai">—</div>
+          <div class="hint">Claude Haiku</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h3>Resumen de tenants</h3>
+        <button class="btn btn-ghost btn-sm" id="btn-refresh-inicio">↻ Actualizar</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tenant</th><th>Plan</th><th>Estado</th>
+              <th>Sesiones</th><th>Msgs 24h</th><th>Pedidos 7d</th>
+              <th>IA este mes</th><th>Próx. cobro</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inicio-tbody">
+            <tr><td colspan="9" class="empty-state">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Tab: Tenants ── -->
+    <div id="panel-tenants" class="tab-panel">
+      <div class="section-header">
+        <h3>Tenants</h3>
+        <button class="btn btn-primary btn-sm" id="btn-nuevo-tenant">+ Nuevo tenant</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th><th>Slug</th><th>Estado</th>
+              <th>Plan</th><th>Dueño</th><th>Creado</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tenants-tbody">
+            <tr><td colspan="7" class="empty-state">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Tab: Productos ── -->
+    <div id="panel-productos" class="tab-panel">
+      <div class="section-header">
+        <h3>Productos — <code id="productos-slug-label"></code></h3>
+        <button class="btn btn-primary btn-sm" id="btn-nuevo-producto">+ Producto</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th><th>Precio</th><th>Tallas</th>
+              <th>Categoría</th><th>Activo</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="productos-tbody">
+            <tr><td colspan="6" class="empty-state">Selecciona un tenant primero</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+</div><!-- /app -->
+
+<!-- ── Modal: Nuevo Tenant ── -->
+<div id="modal-tenant" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Nuevo tenant</div>
+    <div class="modal-sub">El slug se genera automáticamente desde el nombre</div>
+    <form id="form-tenant">
+      <div class="form-row">
+        <label>Nombre del negocio <span class="req">*</span></label>
+        <input id="t-name" name="name" required placeholder="Boutique Ana">
+        <div class="slug-preview">Slug: <strong id="slug-preview">—</strong></div>
+      </div>
+      <div class="modal-divider"></div>
+      <div class="form-row">
+        <label>WhatsApp Token (wa_token)</label>
+        <input id="t-wa-token" name="wa_token" placeholder="EAAxxxxx" autocomplete="off">
+      </div>
+      <div class="form-row">
+        <label>Phone Number ID</label>
+        <input id="t-phone-id" name="phone_number_id" placeholder="123456789">
+      </div>
+      <div class="form-row">
+        <label>Verify Token <span class="req">*</span></label>
+        <input id="t-verify-token" name="verify_token" required placeholder="mi_verify_token">
+      </div>
+      <div class="modal-divider"></div>
+      <div class="form-row">
+        <label>Teléfono del dueño <span class="req">*</span></label>
+        <input id="t-owner-phone" name="owner_phone" required placeholder="573001234567">
+      </div>
+      <div class="form-row">
+        <label>Email del dueño</label>
+        <input id="t-owner-email" name="owner_email" type="email" placeholder="dueño@negocio.com">
+      </div>
+      <div class="form-row">
+        <label>Plan</label>
+        <select id="t-plan" name="plan">
+          <option value="starter">Starter</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-tenant">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-tenant">Crear tenant</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal: Producto ── -->
+<div id="modal-producto" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title" id="modal-producto-title">Nuevo producto</div>
+    <div class="modal-sub" id="modal-producto-sub">Completa los datos del producto</div>
+    <form id="form-producto">
+      <input type="hidden" id="p-id">
+      <div class="form-row">
+        <label>Nombre <span class="req">*</span></label>
+        <input id="p-name" required placeholder="Vestido floral">
+      </div>
+      <div class="form-row">
+        <label>Descripción</label>
+        <input id="p-description" placeholder="Descripción breve del producto">
+      </div>
+      <div class="form-row">
+        <label>Precio (COP) <span class="req">*</span></label>
+        <input id="p-price" type="number" required placeholder="85000" min="0">
+      </div>
+      <div class="form-row">
+        <label>Tallas (separadas por coma)</label>
+        <input id="p-sizes" placeholder="S, M, L, XL">
+      </div>
+      <div class="form-row">
+        <label>Emoji</label>
+        <input id="p-emoji" placeholder="👗" maxlength="4">
+      </div>
+      <div class="form-row">
+        <label>Categoría</label>
+        <input id="p-category" placeholder="Vestidos">
+      </div>
+      <div class="form-row">
+        <label>URL de imagen</label>
+        <input id="p-image" type="url" placeholder="https://...">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-producto">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Estado ────────────────────────────────────────────────────────────────────
+let currentUser        = null;
+let selectedTenantSlug = sessionStorage.getItem('selectedTenant') || null;
+let _refreshing        = false;
+
+const LOGOUT_URL = '/panel-ui/login.html';
+
+// ── Auth guard ────────────────────────────────────────────────────────────────
+
+const authGuard = document.getElementById('auth-guard');
+const appEl     = document.getElementById('app');
+
+function showApp() {
+  authGuard.classList.add('hidden');
+  setTimeout(() => { authGuard.style.display = 'none'; }, 280);
+  appEl.classList.add('ready');
+}
+
+function redirectToLogin() {
+  window.location.replace(LOGOUT_URL);
+}
+
+// Detectar bfcache (botón atrás después de logout)
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) {
+    // La página fue restaurada desde bfcache — re-verificar sesión
+    authGuard.style.display = 'flex';
+    authGuard.classList.remove('hidden');
+    appEl.classList.remove('ready');
+    verifySession().then((ok) => { if (ok) showApp(); else redirectToLogin(); });
+  }
+});
+
+async function verifySession() {
+  try {
+    const res = await fetch('/panel/auth/me', {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data.ok) return false;
+    currentUser = data.user;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── Utilidades ────────────────────────────────────────────────────────────────
+
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function statusChip(s) {
+  const map = {
+    active:    ['chip-success', '● Activo'],
+    suspended: ['chip-danger',  '● Suspendido'],
+    trial:     ['chip-warning', '● Trial'],
+    past_due:  ['chip-danger',  '● Vencido'],
+  };
+  const [cls, label] = map[s] || ['chip-default', s];
+  return `<span class="chip ${cls}">${label}</span>`;
+}
+
+function planChip(p) {
+  const map = { starter: 'chip-default', pro: 'chip-primary', enterprise: 'chip-warning' };
+  return `<span class="chip ${map[p] || 'chip-default'}">${p || 'starter'}</span>`;
+}
+
+function generateSlug(name) {
+  return name.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim().replace(/\s+/g, '-').replace(/-+/g, '-')
+    .slice(0, 48);
+}
+
+// ── API helper ────────────────────────────────────────────────────────────────
+
+async function apiFetch(path, opts = {}) {
+  const doFetch = () => fetch(path, { credentials: 'include', cache: 'no-store', ...opts });
+  let res = await doFetch();
+
+  if (res.status === 401 && !_refreshing) {
+    _refreshing = true;
+    try {
+      const refreshRes = await fetch('/panel/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (refreshRes.ok) {
+        res = await doFetch();
+        if (res.status !== 401) return res;
+      }
+    } catch { /* network error — fall through to redirect */ } finally {
+      _refreshing = false;
+    }
+    redirectToLogin();
+    throw new Error('No autenticado');
+  }
+
+  if (res.status === 401) {
+    redirectToLogin();
+    throw new Error('No autenticado');
+  }
+
+  return res;
+}
+
+// ── Sesión y logout ───────────────────────────────────────────────────────────
+
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  try {
+    await fetch('/panel/auth/logout', { method: 'POST', credentials: 'include', cache: 'no-store' });
+  } catch { /* ignorar error de red en logout */ }
+  // Usar replace para que no quede en el historial
+  window.location.replace(LOGOUT_URL);
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+  const panel = document.getElementById('panel-' + name);
+  const btn   = document.querySelector(`[data-tab="${name}"]`);
+  if (panel) panel.classList.add('active');
+  if (btn)   btn.classList.add('active');
+  sessionStorage.setItem('activeTab', name);
+}
+
+document.querySelectorAll('.tab-btn').forEach((b) => {
+  b.addEventListener('click', () => showTab(b.dataset.tab));
+});
+
+// ── Tab: Inicio ───────────────────────────────────────────────────────────────
+
+async function loadDashboard() {
+  try {
+    const res  = await apiFetch('/panel/admin/dashboard');
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+
+    document.getElementById('stat-tenants').textContent  = data.totals.tenants_count;
+    document.getElementById('stat-sessions').textContent = data.totals.active_sessions_total;
+    document.getElementById('stat-ai').textContent       = data.totals.ai_calls_total.toLocaleString();
+
+    const tbody = document.getElementById('inicio-tbody');
+    if (!data.tenants.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Sin tenants — crea el primero en la tab Tenants</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.tenants.map((t) => `
+      <tr>
+        <td>
+          <div class="td-main">${t.name}</div>
+          <div class="td-sub">${t.slug}</div>
+        </td>
+        <td>${planChip(t.plan)}</td>
+        <td>${statusChip(t.status)}</td>
+        <td>${t.active_sessions}</td>
+        <td>${t.messages_last_24h}</td>
+        <td>${t.orders_last_7d}</td>
+        <td>
+          ${t.ai_calls_this_month.toLocaleString()}
+          <span class="td-sub">$${t.ai_cost_usd}</span>
+        </td>
+        <td>${fmtDate(t.next_billing_date)}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="openProductosTab('${t.slug}')">Productos</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error cargando dashboard: ' + err.message, 'err');
+  }
+}
+
+document.getElementById('btn-refresh-inicio').addEventListener('click', loadDashboard);
+
+// ── Tab: Tenants ──────────────────────────────────────────────────────────────
+
+async function loadTenants() {
+  try {
+    const res  = await apiFetch('/panel/admin/tenants');
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+
+    const tbody = document.getElementById('tenants-tbody');
+    if (!data.tenants.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Sin tenants — crea el primero</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.tenants.map((t) => `
+      <tr>
+        <td class="td-main">${t.name}</td>
+        <td><code>${t.slug}</code></td>
+        <td>${statusChip(t.status)}</td>
+        <td>${planChip(t.plan)}</td>
+        <td>${t.owner_phone}</td>
+        <td>${fmtDate(t.created_at)}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="openProductosTab('${t.slug}')">Productos</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error cargando tenants', 'err');
+  }
+}
+
+// Modal Nuevo Tenant
+document.getElementById('btn-nuevo-tenant').addEventListener('click', () => {
+  document.getElementById('form-tenant').reset();
+  document.getElementById('slug-preview').textContent = '—';
+  document.getElementById('modal-tenant').classList.remove('hidden');
+});
+document.getElementById('btn-cancel-tenant').addEventListener('click', () => {
+  document.getElementById('modal-tenant').classList.add('hidden');
+});
+
+document.getElementById('t-name').addEventListener('input', (e) => {
+  const slug = generateSlug(e.target.value);
+  document.getElementById('slug-preview').textContent = slug || '—';
+});
+
+document.getElementById('form-tenant').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-save-tenant');
+  btn.disabled = true; btn.textContent = 'Creando...';
+  try {
+    const body = {
+      name:            document.getElementById('t-name').value.trim(),
+      wa_token:        document.getElementById('t-wa-token').value || undefined,
+      phone_number_id: document.getElementById('t-phone-id').value || undefined,
+      verify_token:    document.getElementById('t-verify-token').value,
+      owner_phone:     document.getElementById('t-owner-phone').value,
+      owner_email:     document.getElementById('t-owner-email').value || undefined,
+      plan:            document.getElementById('t-plan').value,
+    };
+    const res  = await apiFetch('/panel/admin/tenants', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('modal-tenant').classList.add('hidden');
+    toast(`Tenant "${data.tenant.name}" creado → ${data.tenant.slug}`, 'ok');
+    await Promise.all([loadTenants(), loadDashboard()]);
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Crear tenant';
+  }
+});
+
+// ── Tab: Productos ────────────────────────────────────────────────────────────
+
+function openProductosTab(slug) {
+  selectedTenantSlug = slug;
+  sessionStorage.setItem('selectedTenant', slug);
+  const tabBtn = document.getElementById('tab-productos');
+  tabBtn.style.display = 'block';
+  tabBtn.textContent = `Productos (${slug})`;
+  document.getElementById('productos-slug-label').textContent = slug;
+  showTab('productos');
+  loadProductos(slug);
+}
+
+async function loadProductos(slug) {
+  const tbody = document.getElementById('productos-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Cargando...</td></tr>';
+  try {
+    const res  = await apiFetch(`/panel/admin/tenants/${slug}/products`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+
+    if (!data.products.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Sin productos — agrega el primero</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.products.map((p) => `
+      <tr>
+        <td>
+          <div class="td-main">${p.emoji || '🛍️'} ${p.name}</div>
+          <div class="td-sub">${p.description || ''}</div>
+        </td>
+        <td>$${(p.price||0).toLocaleString('es-CO')}</td>
+        <td>${(p.sizes||[]).map((s) => `<span class="chip chip-default">${s}</span>`).join(' ')}</td>
+        <td>${p.category || '—'}</td>
+        <td>${p.active ? '<span class="chip chip-success">Sí</span>' : '<span class="chip chip-danger">No</span>'}</td>
+        <td style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick='editProducto(${JSON.stringify(p).replace(/'/g,"&#39;")})'>Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteProducto('${p.id}')">Quitar</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error cargando productos', 'err');
+  }
+}
+
+document.getElementById('btn-nuevo-producto').addEventListener('click', () => {
+  document.getElementById('modal-producto-title').textContent = 'Nuevo producto';
+  document.getElementById('modal-producto-sub').textContent   = 'Completa los datos del producto';
+  document.getElementById('form-producto').reset();
+  document.getElementById('p-id').value = '';
+  document.getElementById('modal-producto').classList.remove('hidden');
+});
+document.getElementById('btn-cancel-producto').addEventListener('click', () => {
+  document.getElementById('modal-producto').classList.add('hidden');
+});
+
+function editProducto(p) {
+  document.getElementById('modal-producto-title').textContent = 'Editar producto';
+  document.getElementById('modal-producto-sub').textContent   = `ID: ${p.id}`;
+  document.getElementById('p-id').value          = p.id;
+  document.getElementById('p-name').value        = p.name || '';
+  document.getElementById('p-description').value = p.description || '';
+  document.getElementById('p-price').value       = p.price || '';
+  document.getElementById('p-sizes').value       = (p.sizes||[]).join(', ');
+  document.getElementById('p-emoji').value       = p.emoji || '';
+  document.getElementById('p-category').value   = p.category || '';
+  document.getElementById('p-image').value       = p.image_url || '';
+  document.getElementById('modal-producto').classList.remove('hidden');
+}
+
+document.getElementById('form-producto').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id   = document.getElementById('p-id').value;
+  const slug = selectedTenantSlug;
+  if (!slug) return toast('Selecciona un tenant primero', 'err');
+
+  const body = {
+    name:        document.getElementById('p-name').value.trim(),
+    description: document.getElementById('p-description').value,
+    price:       parseInt(document.getElementById('p-price').value, 10),
+    sizes:       document.getElementById('p-sizes').value.split(',').map((s) => s.trim()).filter(Boolean),
+    emoji:       document.getElementById('p-emoji').value || '🛍️',
+    category:    document.getElementById('p-category').value,
+    image_url:   document.getElementById('p-image').value,
+  };
+
+  try {
+    const url    = id ? `/panel/admin/tenants/${slug}/products/${id}` : `/panel/admin/tenants/${slug}/products`;
+    const method = id ? 'PUT' : 'POST';
+    const res    = await apiFetch(url, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('modal-producto').classList.add('hidden');
+    toast(id ? 'Producto actualizado' : 'Producto creado', 'ok');
+    loadProductos(slug);
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
+  }
+});
+
+async function deleteProducto(id) {
+  if (!confirm('¿Desactivar este producto?')) return;
+  const slug = selectedTenantSlug;
+  try {
+    const res  = await apiFetch(`/panel/admin/tenants/${slug}/products/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast('Producto desactivado', 'ok');
+    loadProductos(slug);
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function init() {
+  const ok = await verifySession();
+  if (!ok) return redirectToLogin();
+
+  // Mostrar UI con datos del usuario
+  document.getElementById('user-name').textContent   = currentUser.username;
+  document.getElementById('user-avatar').textContent = currentUser.username[0].toUpperCase();
+
+  // Restaurar estado de navegación
+  const savedTab = sessionStorage.getItem('activeTab') || 'inicio';
+  showTab(savedTab);
+
+  if (selectedTenantSlug) {
+    const tabBtn = document.getElementById('tab-productos');
+    tabBtn.style.display = 'block';
+    tabBtn.textContent   = `Productos (${selectedTenantSlug})`;
+    document.getElementById('productos-slug-label').textContent = selectedTenantSlug;
+  }
+
+  // Revelar app
+  showApp();
+
+  // Cargar datos
+  await Promise.all([loadDashboard(), loadTenants()]);
+  if (selectedTenantSlug && savedTab === 'productos') {
+    loadProductos(selectedTenantSlug);
+  }
+
+}
+
+init();
+</script>
+</body>
+</html>

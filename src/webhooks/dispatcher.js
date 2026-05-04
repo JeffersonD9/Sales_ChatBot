@@ -6,23 +6,25 @@
  *   2. Cargar tenant desde loader (cache o DB)
  *   3. Para cada mensaje: cargar sesión → procesar → guardar sesión
  *
- * La idempotencia se maneja con un Set en memoria de IDs procesados.
- * TTL: 24 horas (suficiente para el retry window de Meta).
+ * La idempotencia se maneja con un LRU cache de IDs procesados (máx 10k entradas,
+ * TTL 24h). Reemplaza el Set+setTimeout anterior que crecía sin límite bajo carga.
  */
 
-const tenantLoader               = require('../tenants/loader');
-const { getState, saveState }    = require('../core/state/manager');
-const { processMessage }         = require('../core/flow-engine/engine');
-const notifier                   = require('../notifications/notifier');
-const { logger }                 = require('../utils/logger');
+const { LRUCache }                   = require('lru-cache');
+const tenantLoader                   = require('../tenants/loader');
+const { getState, saveState }        = require('../core/state/manager');
+const { processMessage }             = require('../core/flow-engine/engine');
+const notifier                       = require('../notifications/notifier');
+const { logger }                     = require('../utils/logger');
 
 // ── Idempotencia: evita procesar el mismo mensaje dos veces ───────────────
-const processedIds  = new Set();
-const PROCESSED_TTL = 24 * 60 * 60 * 1000; // 24h
+const processedIds = new LRUCache({
+  max: 10_000,
+  ttl: 24 * 60 * 60 * 1000, // 24h
+});
 
 function markProcessed(msgId) {
-  processedIds.add(msgId);
-  setTimeout(() => processedIds.delete(msgId), PROCESSED_TTL);
+  processedIds.set(msgId, 1);
 }
 
 // ── Dispatch principal ────────────────────────────────────────────────────

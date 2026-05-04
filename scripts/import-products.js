@@ -9,7 +9,7 @@
  *            Sin este flag, los nuevos productos se agregan a los existentes.
  *
  * Formato del CSV (primera fila = encabezados, se ignora):
- *   nombre,descripcion,precio,tallas,imagen_url,emoji,categoria
+ *   nombre,descripcion,precio,tallas,imagen_url,emoji,categoria,atributos
  *
  * Columnas:
  *   nombre       (obligatorio) — nombre del producto
@@ -20,6 +20,10 @@
  *   imagen_url   (opcional)    — URL pública de la imagen
  *   emoji        (opcional)    — emoji representativo (default: 🛍️)
  *   categoria    (opcional)    — categoría del producto
+ *   atributos    (opcional)    — JSON con atributos específicos del tipo de tienda
+ *                                Ropa:    {"talla":"M","color":"azul"}
+ *                                Zapatos: {"numero":42,"material":"cuero"}
+ *                                Joyas:   {"metal":"oro 18k","piedra":"esmeralda"}
  */
 
 require('dotenv').config();
@@ -66,9 +70,9 @@ function parseCSV(text) {
 
   // Ignorar la primera fila (encabezados)
   return lines.slice(1).map((line, idx) => {
-    const [nombre, descripcion, precio, tallas, imagen_url, emoji, categoria] =
+    const [nombre, descripcion, precio, tallas, imagen_url, emoji, categoria, atributos] =
       parseCSVLine(line);
-    return { _row: idx + 2, nombre, descripcion, precio, tallas, imagen_url, emoji, categoria };
+    return { _row: idx + 2, nombre, descripcion, precio, tallas, imagen_url, emoji, categoria, atributos };
   });
 }
 
@@ -89,6 +93,18 @@ function validateRow(row) {
     ? row.tallas.split('|').map((s) => s.trim()).filter(Boolean)
     : [];
 
+  // Parsear columna atributos (JSON opcional)
+  let attributes = {};
+  if (row.atributos && row.atributos.trim()) {
+    try {
+      attributes = JSON.parse(row.atributos.trim());
+    } catch {
+      errors.push(`atributos no es JSON válido ("${row.atributos}") — usar formato {"clave":"valor"}`);
+    }
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
   return {
     ok: true,
     product: {
@@ -96,6 +112,7 @@ function validateRow(row) {
       description: row.descripcion || '',
       price,
       sizes,
+      attributes,
       image_url:   row.imagen_url  || '',
       emoji:       row.emoji       || '🛍️',
       category:    row.categoria   || '',
@@ -192,9 +209,9 @@ async function main() {
       for (const p of valid) {
         await client.query(
           `INSERT INTO products
-             (tenant_id, name, description, price, sizes, image_url, emoji, category)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [tenantId, p.name, p.description, p.price, p.sizes, p.image_url, p.emoji, p.category]
+             (tenant_id, name, description, price, sizes, attributes, image_url, emoji, category)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [tenantId, p.name, p.description, p.price, p.sizes, JSON.stringify(p.attributes), p.image_url, p.emoji, p.category]
         );
         inserted++;
       }

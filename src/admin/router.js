@@ -110,27 +110,82 @@ router.get('/tenants/:slug/products', async (req, res) => {
 // ── POST /admin/tenants/:slug/products — Agregar producto ─────────────────
 router.post('/tenants/:slug/products', async (req, res) => {
   const { slug } = req.params;
-  const { name, description, price, sizes, image_url, emoji, category } = req.body;
+  const { name, description, price, sizes, attributes, image_url, emoji, category } = req.body;
 
-  if (!name || !price || !sizes) {
-    return res.status(400).json({ error: 'Faltan campos: name, price, sizes' });
+  if (!name || !price) {
+    return res.status(400).json({ error: 'Faltan campos: name, price' });
   }
 
   try {
     const result = await query(
       `INSERT INTO products
-         (tenant_id, name, description, price, sizes, image_url, emoji, category)
+         (tenant_id, name, description, price, sizes, attributes, image_url, emoji, category)
        VALUES (
          (SELECT id FROM tenants WHERE slug = $1),
-         $2, $3, $4, $5, $6, $7, $8
+         $2, $3, $4, $5, $6, $7, $8, $9
        )
        RETURNING *`,
-      [slug, name, description || '', price, sizes, image_url || '', emoji || '🛍️', category || '']
+      [
+        slug,
+        name,
+        description || '',
+        price,
+        sizes || [],
+        JSON.stringify(attributes || {}),
+        image_url || '',
+        emoji || '🛍️',
+        category || '',
+      ]
     );
-    invalidate(slug); // refrescar cache del tenant
+    invalidate(slug);
     res.status(201).json({ product: result.rows[0] });
   } catch (err) {
     logger.error({ slug, err: err.message }, '[Admin] Error creando producto');
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /admin/tenants/:slug/products/:productId — Editar producto ─────────
+router.put('/tenants/:slug/products/:productId', async (req, res) => {
+  const { slug, productId } = req.params;
+  const { name, description, price, sizes, attributes, image_url, emoji, category } = req.body;
+
+  if (!name || !price) {
+    return res.status(400).json({ error: 'Faltan campos: name, price' });
+  }
+
+  try {
+    const result = await query(
+      `UPDATE products
+       SET name        = $1,
+           description = $2,
+           price       = $3,
+           sizes       = $4,
+           attributes  = $5,
+           image_url   = $6,
+           emoji       = $7,
+           category    = $8
+       WHERE id = $9
+         AND tenant_id = (SELECT id FROM tenants WHERE slug = $10)
+       RETURNING *`,
+      [
+        name,
+        description || '',
+        price,
+        sizes || [],
+        JSON.stringify(attributes || {}),
+        image_url || '',
+        emoji || '🛍️',
+        category || '',
+        productId,
+        slug,
+      ]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
+    invalidate(slug);
+    res.json({ product: result.rows[0] });
+  } catch (err) {
+    logger.error({ slug, productId, err: err.message }, '[Admin] Error editando producto');
     res.status(500).json({ error: err.message });
   }
 });
@@ -147,6 +202,17 @@ router.delete('/tenants/:slug/products/:productId', async (req, res) => {
     );
     invalidate(slug);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /admin/tenants/:slug/ai-usage — Uso de IA del tenant ─────────────
+router.get('/tenants/:slug/ai-usage', async (req, res) => {
+  try {
+    const { getUsage } = require('../core/ai/aiMetrics');
+    const usage = await getUsage(req.params.slug);
+    res.json(usage);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

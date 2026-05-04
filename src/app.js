@@ -17,6 +17,8 @@ const webhookRouter        = require('./webhooks/router');
 const adminRouter          = require('./admin/router');
 const configRouter         = require('./tenants/configRouter');
 const demoRouter           = require('./demo/router');
+const metricsRouter        = require('./metrics');
+const panelRouter          = require('./panel/routes');
 const { healthCheck }      = require('./db');
 const { redisHealthCheck } = require('./redis');
 const { logger }           = require('./utils/logger');
@@ -44,14 +46,24 @@ app.use((req, res, next) => {
   return express.json()(req, res, next);
 });
 
-// ── 3. Demo UI (archivos estáticos) ──────────────────────────────────────
+// ── 3. Archivos estáticos ─────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '..', 'demo')));
+app.use('/admin-ui', express.static(path.join(__dirname, '..', 'public', 'admin')));
+// Panel UI: no-store para que el navegador nunca sirva desde caché tras logout
+app.use('/panel-ui', express.static(path.join(__dirname, '..', 'public', 'panel'), {
+  setHeaders(res) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+  },
+}));
 
 // ── 4. Routers ────────────────────────────────────────────────────────────
 app.use('/webhook',      webhookRouter);
 app.use('/admin',        adminRouter);
 app.use('/api/whatsapp', configRouter);
 app.use('/demo',         demoRouter);
+app.use('/metrics',      metricsRouter);
+app.use('/panel',        panelRouter);
 
 // ── 5. Health check público ───────────────────────────────────────────────
 app.get('/health', async (_req, res) => {
