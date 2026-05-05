@@ -77,7 +77,7 @@ async function processMessage(phone, rawMsg, session, tenant, notifier) {
     }
 
     case STEP.CATALOG_TALLA:
-      await handleTalla(phone, session, txt, tenant);
+      await handleTalla(phone, session, txt, id, tenant);
       break;
 
     case STEP.CATALOG_PRESUPUESTO:

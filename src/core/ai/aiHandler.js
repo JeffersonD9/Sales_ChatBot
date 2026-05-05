@@ -3,46 +3,15 @@
 const Anthropic        = require('@anthropic-ai/sdk');
 const { logger }       = require('../../utils/logger');
 const { increment }    = require('./aiMetrics');
+const { buildSalesPrompt } = require('./salesPrompt');
 
 // 3 turnos completos (user + assistant) = 6 entradas
 const MAX_HISTORY     = 6;
 // Máximo de caracteres por mensaje al almacenar en historial
 const MAX_MSG_CHARS   = 500;
 
-/**
- * Construye el system content con info del negocio y catálogo.
- * Se cachea en Anthropic con cache_control: ephemeral porque es estático
- * por tenant y puede ser largo (catálogo completo).
- *
- * Si el tenant tiene bot_config.ai_system_prompt, se añade al final
- * como instrucciones adicionales personalizadas.
- */
 function _buildSystemContent(tenant) {
-  const cfg = tenant.bot_config || {};
-
-  const productList = (tenant.products || [])
-    .map((p, i) =>
-      `${i + 1}. ${p.name}: ${p.description || ''} | ` +
-      `Precio: $${p.price} | Tallas: ${(p.sizes || []).join(', ')}`
-    )
-    .join('\n');
-
-  let text =
-    `Eres el asistente de ventas de *${cfg.business_name || tenant.name}*, ` +
-    `ubicado en ${cfg.city || 'Colombia'}. ` +
-    `Horario: ${cfg.schedule || 'consultar con el equipo'}.\n\n` +
-    `Catálogo disponible:\n${productList || 'Sin productos cargados.'}\n\n` +
-    `Reglas:\n` +
-    `1. Responde en máximo 3 oraciones claras y amigables.\n` +
-    `2. Si el cliente quiere comprar o ver productos, dile que escriba *catálogo* o elija esa opción en el menú.\n` +
-    `3. No inventes productos, precios ni políticas que no estén en el catálogo.\n` +
-    `4. No repitas el saludo si ya hay historial de conversación.\n` +
-    `5. Responde siempre en el mismo idioma del cliente.`;
-
-  if (cfg.ai_system_prompt) {
-    text += `\n\nInstrucciones adicionales del negocio:\n${cfg.ai_system_prompt}`;
-  }
-
+  const text = buildSalesPrompt(tenant);
   return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
 }
 

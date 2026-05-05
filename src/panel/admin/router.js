@@ -19,6 +19,9 @@ const { getActiveSessions } = require('../../core/state/manager');
 const { query }          = require('../../db');
 const { logger }         = require('../../utils/logger');
 const { requireAuth, requireRole } = require('../auth/middleware');
+const { validateBotConfig } = require('../../utils/botConfigSchema');
+const { buildSalesPrompt }  = require('../../core/ai/salesPrompt');
+const loader                = require('../../tenants/loader');
 
 const router = express.Router();
 
@@ -307,6 +310,77 @@ router.delete('/tenants/:slug/products/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error eliminando producto');
+    res.status(500).json({ ok: false, error: 'Error interno' });
+  }
+});
+
+// ── Bot config (sales persona) ────────────────────────────────────────────────
+
+router.patch('/tenants/:slug/bot-config', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { sales_persona } = req.body || {};
+
+    const tenant = await repo.findBySlug(slug);
+    if (!tenant) {
+      return res.status(404).json({ ok: false, error: 'Tenant no encontrado' });
+    }
+
+    const currentConfig = tenant.bot_config || {};
+    if (!currentConfig.greeting || !currentConfig.escalation) {
+      return res.status(400).json({
+        ok: false,
+        error: 'El tenant no tiene bot_config base (greeting + escalation). Configúralo primero.',
+      });
+    }
+
+    const merged = { ...currentConfig, sales_persona };
+
+    let validated;
+    try {
+      validated = validateBotConfig(merged);
+    } catch (validErr) {
+      return res.status(400).json({ ok: false, error: validErr.message });
+    }
+
+    await query(
+      'UPDATE tenants SET bot_config = $1 WHERE id = $2',
+      [JSON.stringify(validated), tenant.id]
+    );
+
+    loader.invalidate(slug);
+
+    logger.info({ slug, updatedBy: req.panelUser.username }, '[Panel] sales_persona actualizado');
+    res.json({ ok: true, bot_config: validated });
+  } catch (err) {
+    logger.error({ err: err.message }, '[Panel] Error actualizando bot-config');
+    res.status(500).json({ ok: false, error: 'Error interno' });
+  }
+});
+
+router.get('/tenants/:slug/prompt-preview', async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    const tenant = await repo.findBySlug(slug);
+    if (!tenant) {
+      return res.status(404).json({ ok: false, error: 'Tenant no encontrado' });
+    }
+
+    // Cargar productos para incluirlos en el preview
+    const { rows: products } = await query(
+      `SELECT p.id, p.name, p.description, p.price, p.sizes, p.emoji, p.active AS stock
+       FROM products p WHERE p.tenant_id = $1 AND p.active = true
+       ORDER BY p.created_at DESC`,
+      [tenant.id]
+    );
+
+    const tenantWithProducts = { ...tenant, products };
+    const prompt = buildSalesPrompt(tenantWithProducts);
+
+    res.json({ ok: true, prompt });
+  } catch (err) {
+    logger.error({ err: err.message }, '[Panel] Error generando preview de prompt');
     res.status(500).json({ ok: false, error: 'Error interno' });
   }
 });

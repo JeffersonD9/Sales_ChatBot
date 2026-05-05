@@ -16,13 +16,13 @@ const { sendText, sendImage, sendInteractiveButtons } = require('../../whatsapp/
 
 // ── PASO: Talla ───────────────────────────────────────────────────────────
 
-async function handleTalla(phone, session, txt, tenant) {
+async function handleTalla(phone, session, txt, id, tenant) {
   let talla = null;
 
-  if      (txt.includes('talla_s')  || txt === 's'  || txt.includes('peque\u00f1')) talla = 'S';
-  else if (txt.includes('talla_m')  || txt === 'm'  || txt.includes('median'))      talla = 'M';
-  else if (txt.includes('talla_l')  || txt === 'l'  || txt.includes('grand'))       talla = 'L';
-  else if (txt.includes('talla_xl') || txt === 'xl' || txt.includes('extra'))       talla = 'XL';
+  if      (id === 'TALLA_S'  || txt.includes('talla_s')  || txt === 's'  || txt.includes('peque\u00f1')) talla = 'S';
+  else if (id === 'TALLA_M'  || txt.includes('talla_m')  || txt === 'm'  || txt.includes('median'))      talla = 'M';
+  else if (id === 'TALLA_L'  || txt.includes('talla_l')  || txt === 'l'  || txt.includes('grand'))       talla = 'L';
+  else if (id === 'TALLA_XL' || txt.includes('talla_xl') || txt === 'xl' || txt.includes('extra'))       talla = 'XL';
   else    talla = normalizeTalla(txt);
 
   if (!talla) {
@@ -46,6 +46,12 @@ async function handlePresupuesto(phone, session, txt, tenant, notifier) {
   const budget = parseBudget(txt);
 
   if (!budget) {
+    const tallaCambiada = normalizeTalla(txt);
+    if (tallaCambiada) {
+      session.data.talla = tallaCambiada;
+      await sendText(phone, `Talla cambiada a *${tallaCambiada}* \u2705\n\n\ud83d\udcb0 \u00bfCu\u00e1l es tu presupuesto?\n_Ej: 80000 o 80k_`, tenant);
+      return;
+    }
     await sendText(phone, '\uD83E\uDD14 No entend\u00ed el presupuesto. Escr\u00edbelo en pesos, ej: *80000* o *80k*:', tenant);
     return;
   }

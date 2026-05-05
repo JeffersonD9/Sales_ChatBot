@@ -21,6 +21,24 @@ const botConfigSchema = z.object({
   // Prompt personalizado para el asistente IA de este tenant.
   // Se añade al final del system prompt base como instrucciones adicionales.
   ai_system_prompt: z.string().min(1).max(2000).optional(),
+  sales_persona: z.object({
+    persona_name:        z.string().min(1).max(40),
+    persona_description: z.string().max(300).optional(),
+    tone:                z.enum(['casual', 'friendly', 'professional']).default('friendly'),
+    business_description: z.string().max(500).optional(),
+    sales_tips:          z.array(z.string().max(200)).max(8).optional(),
+    objection_price:     z.string().max(300).optional(),
+    objection_delivery:  z.string().max(300).optional(),
+    forbidden_topics:    z.array(z.string().max(50)).max(5).optional(),
+    product_filter: z.object({
+      featured_ids:  z.array(z.string().uuid()).max(20).optional(),
+      sizes:         z.array(z.string().max(10)).max(10).optional(),
+      min_price:     z.number().min(0).optional(),
+      max_price:     z.number().min(0).optional(),
+      in_stock_only: z.boolean().default(true),
+      max_products:  z.number().int().min(1).max(20).default(10),
+    }).optional(),
+  }).optional(),
 });
 
 function validateBotConfig(data) {

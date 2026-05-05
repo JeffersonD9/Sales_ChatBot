@@ -149,14 +149,10 @@ async function handleCheckOrder(phone, session, txt, tenant) {
     logger.error({ tenantSlug: tenant.slug, phone, err: err.message }, '[Order] Error consultando pedido');
   }
 
-  // Fallback: respuesta gen\u00e9rica
   if (!statusMsg) {
     statusMsg =
-      `\uD83D\uDCE6 *Estado de tu pedido:*\n\n` +
-      `\uD83D\uDD0D B\u00fasqueda: "${txt}"\n\n` +
-      `\u2705 *En preparaci\u00f3n* \u2014 Estamos alistando tu paquete.\n` +
-      `\uD83D\uDE9A Env\u00edo estimado: ma\u00f1ana antes de las 6pm.\n\n` +
-      `\u00bfTienes alguna otra duda? Escribe *men\u00fa* para volver. \uD83D\uDE0A`;
+      `\uD83D\uDD0D No encontramos ning\u00fan pedido con *"${txt}"*.\n\n` +
+      `Verifica el nombre o n\u00famero con el que lo hiciste, o escribe *men\u00fa* para volver. \uD83D\uDE0A`;
   }
 
   await sendText(phone, statusMsg, tenant);

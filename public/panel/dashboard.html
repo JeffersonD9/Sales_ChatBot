@@ -355,6 +355,7 @@
     <div id="panel-productos" class="tab-panel">
       <div class="section-header">
         <h3>Productos — <code id="productos-slug-label"></code></h3>
+        <button class="btn btn-ghost btn-sm" id="btn-import-csv">↑ Importar CSV</button>
         <button class="btn btn-primary btn-sm" id="btn-nuevo-producto">+ Producto</button>
       </div>
       <div class="table-wrap">
@@ -413,12 +414,68 @@
         <select id="t-plan" name="plan">
           <option value="starter">Starter</option>
           <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
+          <option value="enterprise">Premium</option>
         </select>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="btn-cancel-tenant">Cancelar</button>
         <button type="submit" class="btn btn-primary" id="btn-save-tenant">Crear tenant</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal: Editar Tenant ── -->
+<div id="modal-edit-tenant" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Editar tenant — <code id="edit-tenant-slug-label"></code></div>
+    <div class="modal-sub">Deja en blanco los tokens si no deseas cambiarlos</div>
+    <form id="form-edit-tenant">
+      <input type="hidden" id="et-slug">
+      <div class="form-row">
+        <label>Nombre del negocio <span class="req">*</span></label>
+        <input id="et-name" required placeholder="Boutique Ana">
+      </div>
+      <div class="form-row">
+        <label>Estado</label>
+        <select id="et-status">
+          <option value="active">Activo</option>
+          <option value="trial">Trial</option>
+          <option value="suspended">Suspendido</option>
+        </select>
+      </div>
+      <div class="modal-divider"></div>
+      <div class="form-row">
+        <label>Teléfono del dueño <span class="req">*</span></label>
+        <input id="et-owner-phone" required placeholder="573001234567">
+      </div>
+      <div class="form-row">
+        <label>Email del dueño</label>
+        <input id="et-owner-email" type="email" placeholder="dueño@negocio.com">
+      </div>
+      <div class="modal-divider"></div>
+      <div class="form-row">
+        <label>Nuevo WhatsApp Token (dejar vacío para no cambiar)</label>
+        <input id="et-wa-token" placeholder="EAAxxxxx" autocomplete="off">
+      </div>
+      <div class="form-row">
+        <label>Nuevo Phone Number ID (dejar vacío para no cambiar)</label>
+        <input id="et-phone-id" placeholder="123456789">
+      </div>
+      <div class="form-row">
+        <label>Nuevo Verify Token (dejar vacío para no cambiar)</label>
+        <input id="et-verify-token" placeholder="mi_verify_token">
+      </div>
+      <div class="modal-divider"></div>
+      <div class="form-row" style="display:flex;align-items:center;gap:10px">
+        <input id="et-meta-live" type="checkbox" style="width:auto">
+        <label for="et-meta-live" style="cursor:pointer;text-transform:none;font-size:13px;letter-spacing:0">
+          Conectado a Meta (webhook activo en Meta Business Manager)
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-edit-tenant">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-edit-tenant">Guardar cambios</button>
       </div>
     </form>
   </div>
@@ -462,6 +519,155 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="btn-cancel-producto">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal: Importar CSV ── -->
+<div id="modal-import-csv" class="modal-overlay hidden">
+  <div class="modal" style="width:660px">
+    <div class="modal-title">Importar productos por CSV</div>
+    <div class="modal-sub">
+      Primera fila = encabezados. Requeridos: <code>name</code>, <code>price</code>, <code>image_url</code>.
+      Opcionales: <code>description</code>, <code>sizes</code> (separar con <code>|</code>), <code>emoji</code>, <code>category</code>.
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-download-template">↓ Descargar plantilla</button>
+      <span style="color:var(--muted);font-size:12px">o sube tu propio CSV</span>
+    </div>
+
+    <div class="form-row">
+      <label>Archivo CSV</label>
+      <input type="file" id="csv-file-input" accept=".csv"
+        style="color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;width:100%;cursor:pointer">
+    </div>
+
+    <div id="csv-preview-wrap" style="display:none;margin-top:4px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">
+        Vista previa — <span id="csv-preview-count">0</span> fila(s)
+      </div>
+      <div style="max-height:190px;overflow:auto;border:1px solid var(--border);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap">
+          <thead><tr id="csv-preview-head" style="background:var(--surface-2)"></tr></thead>
+          <tbody id="csv-preview-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="csv-validation-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="btn-cancel-import-csv">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-confirm-import-csv" disabled>Subir 0 productos</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Persona IA ── -->
+<div id="modal-persona" class="modal-overlay hidden">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title">Persona IA — <span id="persona-slug-label">—</span></div>
+    <div class="modal-sub">Configura cómo se presenta el asistente virtual de este negocio</div>
+
+    <form id="form-persona">
+      <!-- ── Identidad ── -->
+      <div class="modal-section-title" style="margin:16px 0 8px;font-weight:600;color:var(--text-secondary,#666)">Identidad y tono</div>
+      <div class="form-row">
+        <label>Nombre de la persona <span class="req">*</span></label>
+        <input id="per-name" placeholder="Valeria, Carlos, Sofía..." maxlength="40">
+      </div>
+      <div class="form-row">
+        <label>Descripción breve (aparece al inicio del prompt)</label>
+        <textarea id="per-description" rows="2" maxlength="300" placeholder="Soy una asesora de moda apasionada por ayudarte..."></textarea>
+      </div>
+      <div class="form-row">
+        <label>Tono de comunicación</label>
+        <select id="per-tone">
+          <option value="casual">Casual — relajado, como una amiga, con emojis</option>
+          <option value="friendly" selected>Amigable — cálido y profesional, algunos emojis</option>
+          <option value="professional">Profesional — formal y claro, sin emojis</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Descripción del negocio (contexto extra para el bot)</label>
+        <textarea id="per-biz-desc" rows="2" maxlength="500" placeholder="Boutique de ropa femenina con lo último en moda urbana..."></textarea>
+      </div>
+
+      <div class="modal-divider"></div>
+
+      <!-- ── Objeciones ── -->
+      <div class="modal-section-title" style="margin:0 0 8px;font-weight:600;color:var(--text-secondary,#666)">Manejo de objeciones</div>
+      <div class="form-row">
+        <label>Cuando digan "está muy caro"</label>
+        <textarea id="per-obj-price" rows="2" maxlength="300" placeholder="Entiendo, la calidad tiene su precio. ¿Te muestro algo similar con mejor precio?"></textarea>
+      </div>
+      <div class="form-row">
+        <label>Sobre tiempos de entrega</label>
+        <textarea id="per-obj-delivery" rows="2" maxlength="300" placeholder="Entregamos en 2-3 días hábiles a toda Colombia con seguimiento."></textarea>
+      </div>
+
+      <div class="modal-divider"></div>
+
+      <!-- ── Tips y restricciones ── -->
+      <div class="modal-section-title" style="margin:0 0 8px;font-weight:600;color:var(--text-secondary,#666)">Tips y restricciones</div>
+      <div class="form-row">
+        <label>Consejos de ventas (uno por línea, máx 8)</label>
+        <textarea id="per-tips" rows="3" placeholder="Pregunta siempre la talla y la ocasión&#10;Si duda entre dos, sugiere llevarse las dos"></textarea>
+      </div>
+      <div class="form-row">
+        <label>Temas prohibidos (separados por coma, máx 5)</label>
+        <input id="per-forbidden" placeholder="política, competidores, precios anteriores">
+      </div>
+
+      <div class="modal-divider"></div>
+
+      <!-- ── Productos que verá el bot ── -->
+      <div class="modal-section-title" style="margin:0 0 8px;font-weight:600;color:var(--text-secondary,#666)">Productos que verá el bot</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-row" style="margin:0">
+          <label>Máximo de productos en el prompt</label>
+          <input id="per-max-products" type="number" min="1" max="20" value="10">
+        </div>
+        <div class="form-row" style="margin:0;display:flex;align-items:center;gap:8px;padding-top:20px">
+          <input id="per-in-stock" type="checkbox" checked style="width:auto">
+          <label for="per-in-stock" style="cursor:pointer">Solo productos en stock</label>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
+        <div class="form-row" style="margin:0">
+          <label>Filtrar por tallas (coma)</label>
+          <input id="per-sizes" placeholder="S, M, L">
+        </div>
+        <div class="form-row" style="margin:0">
+          <label>Precio mínimo</label>
+          <input id="per-min-price" type="number" min="0" placeholder="0">
+        </div>
+        <div class="form-row" style="margin:0">
+          <label>Precio máximo</label>
+          <input id="per-max-price" type="number" min="0" placeholder="Sin límite">
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <label style="display:block;margin-bottom:6px;font-size:13px">Productos destacados (aparecen primero)</label>
+        <div id="per-products-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border,#e2e8f0);border-radius:6px;padding:8px">
+          <p style="color:#999;font-size:13px;margin:4px">Cargando productos...</p>
+        </div>
+      </div>
+
+      <div class="modal-divider"></div>
+
+      <!-- ── Preview ── -->
+      <div style="margin-bottom:12px">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-preview-prompt">Ver preview del prompt</button>
+      </div>
+      <pre id="persona-prompt-preview" style="display:none;white-space:pre-wrap;font-size:11px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:12px;max-height:300px;overflow-y:auto;line-height:1.5"></pre>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-persona">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-persona">Guardar persona</button>
       </div>
     </form>
   </div>
@@ -652,8 +858,9 @@ async function loadDashboard() {
           <span class="td-sub">$${t.ai_cost_usd}</span>
         </td>
         <td>${fmtDate(t.next_billing_date)}</td>
-        <td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="openProductosTab('${t.slug}')">Productos</button>
+          <button class="btn btn-ghost btn-sm" onclick="openPersonaModal('${t.slug}')">Persona IA</button>
         </td>
       </tr>
     `).join('');
@@ -685,8 +892,10 @@ async function loadTenants() {
         <td>${planChip(t.plan)}</td>
         <td>${t.owner_phone}</td>
         <td>${fmtDate(t.created_at)}</td>
-        <td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick='openEditTenantModal(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Editar</button>
           <button class="btn btn-ghost btn-sm" onclick="openProductosTab('${t.slug}')">Productos</button>
+          <button class="btn btn-ghost btn-sm" onclick="openPersonaModal('${t.slug}')">Persona IA</button>
         </td>
       </tr>
     `).join('');
@@ -857,6 +1066,415 @@ async function deleteProducto(id) {
     if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
   }
 }
+
+// ── Persona IA ────────────────────────────────────────────────────────────────
+
+let _personaSlug = null;
+
+document.getElementById('btn-cancel-persona').addEventListener('click', () => {
+  document.getElementById('modal-persona').classList.add('hidden');
+});
+
+async function openPersonaModal(slug) {
+  _personaSlug = slug;
+  document.getElementById('persona-slug-label').textContent = slug;
+  document.getElementById('form-persona').reset();
+  document.getElementById('per-max-products').value = 10;
+  document.getElementById('per-in-stock').checked   = true;
+  document.getElementById('persona-prompt-preview').style.display = 'none';
+  document.getElementById('per-products-list').innerHTML =
+    '<p style="color:#999;font-size:13px;margin:4px">Cargando productos...</p>';
+
+  document.getElementById('modal-persona').classList.remove('hidden');
+
+  // Cargar config actual y productos en paralelo
+  try {
+    const [cfgRes, prodRes] = await Promise.all([
+      apiFetch(`/panel/admin/tenants`),
+      apiFetch(`/panel/admin/tenants/${slug}/products`),
+    ]);
+    const [cfgData, prodData] = await Promise.all([cfgRes.json(), prodRes.json()]);
+
+    // Extraer bot_config.sales_persona del tenant
+    const tenant  = (cfgData.tenants || []).find((t) => t.slug === slug);
+    const persona = tenant?.bot_config?.sales_persona || {};
+    const pf      = persona.product_filter || {};
+
+    // Poblar campos de identidad
+    document.getElementById('per-name').value         = persona.persona_name || '';
+    document.getElementById('per-description').value  = persona.persona_description || '';
+    document.getElementById('per-tone').value         = persona.tone || 'friendly';
+    document.getElementById('per-biz-desc').value     = persona.business_description || '';
+    document.getElementById('per-obj-price').value    = persona.objection_price || '';
+    document.getElementById('per-obj-delivery').value = persona.objection_delivery || '';
+    document.getElementById('per-tips').value         = (persona.sales_tips || []).join('\n');
+    document.getElementById('per-forbidden').value    = (persona.forbidden_topics || []).join(', ');
+
+    // Poblar filtros de productos
+    document.getElementById('per-max-products').value = pf.max_products || 10;
+    document.getElementById('per-in-stock').checked   = pf.in_stock_only !== false;
+    document.getElementById('per-sizes').value        = (pf.sizes || []).join(', ');
+    document.getElementById('per-min-price').value    = pf.min_price != null ? pf.min_price : '';
+    document.getElementById('per-max-price').value    = pf.max_price != null ? pf.max_price : '';
+
+    // Renderizar lista de productos con checkboxes
+    const products = prodData.products || [];
+    const featuredIds = new Set(pf.featured_ids || []);
+    if (!products.length) {
+      document.getElementById('per-products-list').innerHTML =
+        '<p style="color:#999;font-size:13px;margin:4px">Sin productos — agrega productos primero</p>';
+    } else {
+      document.getElementById('per-products-list').innerHTML = products.map((p) => `
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px">
+          <input type="checkbox" class="per-featured-cb" value="${p.id}" ${featuredIds.has(p.id) ? 'checked' : ''} style="width:auto">
+          <span>${p.emoji || '🛍️'} <strong>${p.name}</strong> — $${(p.price||0).toLocaleString('es-CO')}
+            ${(p.sizes||[]).length ? `<span style="color:#888">(${p.sizes.join(', ')})</span>` : ''}
+            ${!p.active ? '<span style="color:#e53e3e;font-size:11px">[inactivo]</span>' : ''}
+          </span>
+        </label>
+      `).join('');
+    }
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error cargando datos de persona', 'err');
+  }
+}
+
+document.getElementById('btn-preview-prompt').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-preview-prompt');
+  const pre  = document.getElementById('persona-prompt-preview');
+  btn.disabled = true; btn.textContent = 'Cargando...';
+  try {
+    const res  = await apiFetch(`/panel/admin/tenants/${_personaSlug}/prompt-preview`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    pre.textContent  = data.prompt;
+    pre.style.display = 'block';
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Ver preview del prompt';
+  }
+});
+
+document.getElementById('form-persona').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-save-persona');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+
+  try {
+    const featured_ids = Array.from(
+      document.querySelectorAll('.per-featured-cb:checked')
+    ).map((cb) => cb.value);
+
+    const sizesRaw = document.getElementById('per-sizes').value.trim();
+    const sizes    = sizesRaw ? sizesRaw.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+
+    const minPrice = document.getElementById('per-min-price').value;
+    const maxPrice = document.getElementById('per-max-price').value;
+
+    const tipsRaw  = document.getElementById('per-tips').value.trim();
+    const sales_tips = tipsRaw
+      ? tipsRaw.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 8)
+      : undefined;
+
+    const forbiddenRaw = document.getElementById('per-forbidden').value.trim();
+    const forbidden_topics = forbiddenRaw
+      ? forbiddenRaw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 5)
+      : undefined;
+
+    const product_filter = {
+      max_products:  parseInt(document.getElementById('per-max-products').value, 10) || 10,
+      in_stock_only: document.getElementById('per-in-stock').checked,
+      ...(featured_ids.length ? { featured_ids } : {}),
+      ...(sizes              ? { sizes }          : {}),
+      ...(minPrice           ? { min_price: parseInt(minPrice, 10) } : {}),
+      ...(maxPrice           ? { max_price: parseInt(maxPrice, 10) } : {}),
+    };
+
+    const personaName = document.getElementById('per-name').value.trim();
+    if (!personaName) {
+      toast('El nombre de la persona es requerido', 'err');
+      return;
+    }
+
+    const sales_persona = {
+      persona_name:        personaName,
+      persona_description: document.getElementById('per-description').value.trim() || undefined,
+      tone:                document.getElementById('per-tone').value,
+      business_description: document.getElementById('per-biz-desc').value.trim() || undefined,
+      objection_price:     document.getElementById('per-obj-price').value.trim() || undefined,
+      objection_delivery:  document.getElementById('per-obj-delivery').value.trim() || undefined,
+      sales_tips,
+      forbidden_topics,
+      product_filter,
+    };
+
+    const res  = await apiFetch(`/panel/admin/tenants/${_personaSlug}/bot-config`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sales_persona }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('modal-persona').classList.add('hidden');
+    toast(`Persona IA guardada para ${_personaSlug}`, 'ok');
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar persona';
+  }
+});
+
+// ── Editar Tenant ─────────────────────────────────────────────────────────────
+
+function openEditTenantModal(t) {
+  document.getElementById('et-slug').value         = t.slug;
+  document.getElementById('edit-tenant-slug-label').textContent = t.slug;
+  document.getElementById('et-name').value          = t.name || '';
+  document.getElementById('et-status').value        = t.status || 'active';
+  document.getElementById('et-owner-phone').value   = t.owner_phone || '';
+  document.getElementById('et-owner-email').value   = t.owner_email || '';
+  document.getElementById('et-wa-token').value      = '';
+  document.getElementById('et-phone-id').value      = '';
+  document.getElementById('et-verify-token').value  = '';
+  document.getElementById('et-meta-live').checked   = !!t.meta_live;
+  document.getElementById('modal-edit-tenant').classList.remove('hidden');
+}
+
+document.getElementById('btn-cancel-edit-tenant').addEventListener('click', () => {
+  document.getElementById('modal-edit-tenant').classList.add('hidden');
+});
+
+document.getElementById('form-edit-tenant').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn  = document.getElementById('btn-save-edit-tenant');
+  const slug = document.getElementById('et-slug').value;
+  btn.disabled = true; btn.textContent = 'Guardando...';
+
+  try {
+    const body = {
+      name:        document.getElementById('et-name').value.trim(),
+      status:      document.getElementById('et-status').value,
+      owner_phone: document.getElementById('et-owner-phone').value.trim(),
+      meta_live:   document.getElementById('et-meta-live').checked,
+    };
+    const email = document.getElementById('et-owner-email').value.trim();
+    if (email) body.owner_email = email;
+    const waToken = document.getElementById('et-wa-token').value.trim();
+    if (waToken) body.wa_token = waToken;
+    const phoneId = document.getElementById('et-phone-id').value.trim();
+    if (phoneId) body.phone_number_id = phoneId;
+    const verifyToken = document.getElementById('et-verify-token').value.trim();
+    if (verifyToken) body.verify_token = verifyToken;
+
+    const res  = await apiFetch(`/panel/admin/tenants/${slug}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('modal-edit-tenant').classList.add('hidden');
+    toast(`Tenant "${slug}" actualizado`, 'ok');
+    await Promise.all([loadTenants(), loadDashboard()]);
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+  }
+});
+
+// ── Importar CSV ─────────────────────────────────────────────────────────────
+
+let _csvValidRows = [];
+
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const result = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const fields = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (ch === ',' && !inQuotes) {
+        fields.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    fields.push(current.trim());
+    result.push(fields);
+  }
+  return result;
+}
+
+function isValidUrl(str) {
+  try { new URL(str); return true; } catch { return false; }
+}
+
+function showCsvValidationMsg(msg, isError) {
+  const el = document.getElementById('csv-validation-msg');
+  el.style.display = 'block';
+  el.style.background   = isError ? 'var(--danger-dim)'  : 'var(--warning-dim)';
+  el.style.border       = `1px solid ${isError ? 'var(--danger)' : 'var(--warning)'}`;
+  el.style.color        = isError ? 'var(--danger)'       : 'var(--warning)';
+  el.innerHTML = msg;
+}
+
+document.getElementById('btn-import-csv').addEventListener('click', () => {
+  if (!selectedTenantSlug) return toast('Selecciona un tenant primero', 'err');
+  document.getElementById('csv-file-input').value = '';
+  document.getElementById('csv-preview-wrap').style.display = 'none';
+  document.getElementById('csv-validation-msg').style.display = 'none';
+  document.getElementById('btn-confirm-import-csv').disabled = true;
+  document.getElementById('btn-confirm-import-csv').textContent = 'Subir 0 productos';
+  _csvValidRows = [];
+  document.getElementById('modal-import-csv').classList.remove('hidden');
+});
+
+document.getElementById('btn-cancel-import-csv').addEventListener('click', () => {
+  document.getElementById('modal-import-csv').classList.add('hidden');
+});
+
+document.getElementById('btn-download-template').addEventListener('click', () => {
+  const csv = [
+    'name,price,image_url,description,sizes,emoji,category',
+    '"Vestido Floral",85000,https://ejemplo.com/vestido.jpg,"Vestido de verano floral",S|M|L,👗,Vestidos',
+    '"Blusa Casual",45000,https://ejemplo.com/blusa.jpg,"Blusa básica de algodón",XS|S|M|L|XL,👚,Blusas',
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'plantilla-productos.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('csv-file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById('csv-validation-msg').style.display = 'none';
+    document.getElementById('csv-preview-wrap').style.display = 'none';
+
+    const rows = parseCSV(ev.target.result);
+    if (rows.length < 2) {
+      showCsvValidationMsg('El CSV debe tener al menos una fila de datos además del encabezado.', true);
+      return;
+    }
+
+    const headers   = rows[0].map((h) => h.toLowerCase().replace(/\s+/g, '_'));
+    const dataRows  = rows.slice(1);
+    const idxName   = headers.indexOf('name');
+    const idxPrice  = headers.indexOf('price');
+    const idxImg    = headers.indexOf('image_url');
+    const idxDesc   = headers.indexOf('description');
+    const idxSizes  = headers.indexOf('sizes');
+    const idxEmoji  = headers.indexOf('emoji');
+    const idxCat    = headers.indexOf('category');
+
+    if (idxName === -1 || idxPrice === -1 || idxImg === -1) {
+      showCsvValidationMsg('Faltan columnas requeridas: <strong>name</strong>, <strong>price</strong>, <strong>image_url</strong>.', true);
+      return;
+    }
+
+    const parsed = dataRows.map((cols, i) => {
+      const get    = (idx) => (idx >= 0 && cols[idx] != null ? cols[idx] : '');
+      const name   = get(idxName);
+      const priceS = get(idxPrice);
+      const imgUrl = get(idxImg);
+      const desc   = get(idxDesc);
+      const sizesS = get(idxSizes);
+      const emoji  = get(idxEmoji) || '🛍️';
+      const cat    = get(idxCat);
+      const price  = parseInt(priceS, 10);
+      const sizes  = sizesS ? sizesS.split('|').map((s) => s.trim()).filter(Boolean) : [];
+      const errs   = [];
+      if (!name)                              errs.push('name requerido');
+      if (!priceS || isNaN(price) || price <= 0) errs.push('price inválido');
+      if (!imgUrl)                            errs.push('image_url requerida');
+      else if (!isValidUrl(imgUrl))           errs.push('image_url no es URL válida');
+      return { index: i, data: { name, price, image_url: imgUrl, description: desc, sizes, emoji, category: cat }, errors: errs, valid: errs.length === 0 };
+    });
+
+    _csvValidRows = parsed.filter((r) => r.valid).map((r) => r.data);
+
+    // Renderizar preview
+    const thStyle = 'padding:7px 10px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)';
+    const tdStyle = 'padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px';
+    document.getElementById('csv-preview-head').innerHTML =
+      `<th style="${thStyle}">#</th>` +
+      ['name','price','image_url','sizes','emoji','category'].map((h) => `<th style="${thStyle}">${h}</th>`).join('') +
+      `<th style="${thStyle}">estado</th>`;
+
+    document.getElementById('csv-preview-body').innerHTML = parsed.map((row) => {
+      const d  = row.data;
+      const bg = row.valid ? '' : `style="background:var(--danger-dim)"`;
+      const statusCell = row.valid
+        ? `<td style="${tdStyle};color:var(--success)">✓</td>`
+        : `<td style="${tdStyle};color:var(--danger)">${row.errors.join(', ')}</td>`;
+      const imgShort = d.image_url.length > 28 ? d.image_url.slice(0, 28) + '…' : d.image_url;
+      return `<tr ${bg}>
+        <td style="${tdStyle}">${row.index + 1}</td>
+        <td style="${tdStyle}">${d.name}</td>
+        <td style="${tdStyle}">${isNaN(d.price) ? '' : d.price}</td>
+        <td style="${tdStyle}" title="${d.image_url}">${imgShort}</td>
+        <td style="${tdStyle}">${d.sizes.join('|')}</td>
+        <td style="${tdStyle}">${d.emoji}</td>
+        <td style="${tdStyle}">${d.category}</td>
+        ${statusCell}
+      </tr>`;
+    }).join('');
+
+    document.getElementById('csv-preview-count').textContent = parsed.length;
+    document.getElementById('csv-preview-wrap').style.display = 'block';
+
+    const invalid = parsed.filter((r) => !r.valid).length;
+    if (invalid) {
+      showCsvValidationMsg(`${invalid} fila(s) con errores serán ignoradas. Se importarán ${_csvValidRows.length}.`, false);
+    }
+
+    const confirmBtn = document.getElementById('btn-confirm-import-csv');
+    confirmBtn.disabled     = _csvValidRows.length === 0;
+    confirmBtn.textContent  = `Subir ${_csvValidRows.length} producto${_csvValidRows.length !== 1 ? 's' : ''}`;
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('btn-confirm-import-csv').addEventListener('click', async () => {
+  if (!_csvValidRows.length) return;
+  const slug = selectedTenantSlug;
+  if (!slug) return toast('Selecciona un tenant primero', 'err');
+
+  const btn = document.getElementById('btn-confirm-import-csv');
+  btn.disabled = true; btn.textContent = 'Importando...';
+
+  try {
+    const res  = await apiFetch(`/panel/admin/tenants/${slug}/products/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ products: _csvValidRows }),
+    });
+    const data = await res.json();
+    if (res.status === 400) throw new Error(data.error || 'Ningún producto válido');
+
+    document.getElementById('modal-import-csv').classList.add('hidden');
+    let msg = `${data.inserted} producto(s) importados correctamente.`;
+    if (data.errors && data.errors.length) msg += ` ${data.errors.length} error(es) del servidor.`;
+    toast(msg, 'ok');
+    loadProductos(slug);
+  } catch (err) {
+    if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
+    btn.disabled    = false;
+    btn.textContent = `Subir ${_csvValidRows.length} producto${_csvValidRows.length !== 1 ? 's' : ''}`;
+  }
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 

@@ -103,15 +103,23 @@ async function create(data) {
  */
 async function update(slug, fields) {
   const allowed = ['name', 'wa_token_encrypted', 'phone_number_id', 'verify_token',
-                   'owner_phone', 'owner_email', 'bot_config', 'status'];
+                   'owner_phone', 'owner_email', 'bot_config', 'status',
+                   'meta_live', 'meta_connected_at'];
   const keys   = Object.keys(fields).filter((k) => allowed.includes(k));
   if (keys.length === 0) return null;
 
-  const sets   = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
+  // When activating meta_live, set meta_connected_at the first time only
+  const extraSets = fields.meta_live === true
+    ? ['meta_connected_at = COALESCE(meta_connected_at, NOW())']
+    : [];
+
+  const sets   = [...keys.map((k, i) => `${k} = $${i + 2}`), ...extraSets].join(', ');
   const values = keys.map((k) => k === 'bot_config' ? JSON.stringify(fields[k]) : fields[k]);
 
   const result = await query(
-    `UPDATE tenants SET ${sets}, updated_at = NOW() WHERE slug = $1 RETURNING id, slug, name, status`,
+    `UPDATE tenants SET ${sets}, updated_at = NOW()
+     WHERE slug = $1
+     RETURNING id, slug, name, status, meta_live, meta_connected_at`,
     [slug, ...values]
   );
   return result.rows[0] || null;
@@ -123,7 +131,8 @@ async function update(slug, fields) {
  */
 async function listAll() {
   const result = await query(
-    `SELECT id, slug, name, status, owner_phone, owner_email, bot_config, created_at
+    `SELECT id, slug, name, status, meta_live, meta_connected_at,
+            owner_phone, owner_email, bot_config, created_at
      FROM tenants ORDER BY created_at DESC`,
     []
   );
