@@ -48,7 +48,7 @@ services:
 
   # ── Redis (sin exponer puerto al host) ─────────────────────────────────────
   redis:
-    command: redis-server --save 60 1 --appendonly yes
+    command: redis-server --save 60 1 --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     logging:
@@ -58,15 +58,18 @@ services:
         max-file: "3"
 
   # ── Nginx (proxy HTTPS) ────────────────────────────────────────────────────
+  # La imagen nginx oficial procesa automáticamente nginx/templates/*.template
+  # sustituyendo variables de entorno (${DOMAIN}) al arrancar el contenedor.
   nginx:
     image: nginx:1.27-alpine
     container_name: whatsapp-saas-nginx
     restart: unless-stopped
+    env_file: .env
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
     depends_on:

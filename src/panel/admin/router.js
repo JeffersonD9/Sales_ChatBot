@@ -25,6 +25,15 @@ const loader                = require('../../tenants/loader');
 
 const router = express.Router();
 
+const UNIQUE_ERRORS = {
+  tenants_slug_key:             'El slug ya existe',
+  tenants_name_unique:          'Ya existe un tenant con ese nombre de negocio',
+  tenants_owner_phone_unique:   'Ese número de teléfono ya está registrado en otro tenant',
+  tenants_owner_email_unique:   'Ese email ya está registrado en otro tenant',
+  tenants_verify_token_unique:  'Colisión de verify_token, intenta de nuevo',
+  tenants_phone_number_id_unique: 'Ese Phone Number ID ya está asignado a otro tenant',
+};
+
 router.use(requireAuth, requireRole('super_admin'));
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -59,7 +68,7 @@ async function _resolveSlugConflict(base) {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
-router.get('/dashboard', async (req, res) => {
+router.get('/dashboard', async (req, res, next) => {
   try {
     const tenants = await repo.listAll();
 
@@ -109,33 +118,33 @@ router.get('/dashboard', async (req, res) => {
     res.json({ ok: true, tenants: tenantMetrics, totals });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error en dashboard');
-    res.status(500).json({ ok: false, error: 'Error cargando dashboard' });
+    next(err);
   }
 });
 
 // ── Tenants ───────────────────────────────────────────────────────────────────
 
-router.get('/tenants', async (req, res) => {
+router.get('/tenants', async (req, res, next) => {
   try {
     const tenants = await repo.listAll();
     res.json({ ok: true, tenants });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error listando tenants');
-    res.status(500).json({ ok: false, error: 'Error interno' });
+    next(err);
   }
 });
 
 router.post('/tenants', async (req, res) => {
   try {
-    const { name, wa_token, phone_number_id, verify_token, owner_phone, owner_email, plan } = req.body || {};
+    const { name, wa_token, phone_number_id, owner_phone, owner_email, plan } = req.body || {};
 
     if (!name || !owner_phone) {
       return res.status(400).json({ ok: false, error: 'name y owner_phone son requeridos' });
     }
 
-    const baseSlug = generateSlug(name);
-    const slug     = await _resolveSlugConflict(baseSlug);
-
+    const baseSlug       = generateSlug(name);
+    const slug           = await _resolveSlugConflict(baseSlug);
+    const finalVerifyToken   = await repo.generateUniqueVerifyToken(slug);
     const wa_token_encrypted = wa_token ? encrypt(wa_token) : null;
 
     const tenant = await repo.create({
@@ -143,7 +152,7 @@ router.post('/tenants', async (req, res) => {
       name,
       wa_token_encrypted,
       phone_number_id: phone_number_id || null,
-      verify_token:    verify_token    || null,
+      verify_token:    finalVerifyToken,
       owner_phone,
       owner_email:     owner_email     || null,
       bot_config:      {},
@@ -153,12 +162,24 @@ router.post('/tenants', async (req, res) => {
       await query('UPDATE tenants SET plan = $1 WHERE id = $2', [plan, tenant.id]);
     }
 
+    const domain = process.env.DOMAIN ? `https://${process.env.DOMAIN}` : 'https://jestsolution.dev';
+    const webhook_url = `${domain}/webhook/${slug}`;
+
     logger.info({ slug, createdBy: req.panelUser.username }, '[Panel] Tenant creado');
-    res.status(201).json({ ok: true, tenant: { ...tenant, slug } });
+    res.status(201).json({
+      ok: true,
+      tenant: { ...tenant, slug },
+      meta_setup: {
+        webhook_url,
+        verify_token: tenant.verify_token || finalVerifyToken,
+        phone_number_id: phone_number_id || tenant.phone_number_id || '',
+      },
+    });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error creando tenant');
     if (err.code === '23505') {
-      return res.status(409).json({ ok: false, error: 'El slug ya existe' });
+      const msg = UNIQUE_ERRORS[err.constraint] || 'Dato duplicado — verifica nombre, teléfono o email';
+      return res.status(409).json({ ok: false, error: msg });
     }
     res.status(500).json({ ok: false, error: 'Error interno' });
   }
@@ -167,12 +188,11 @@ router.post('/tenants', async (req, res) => {
 router.patch('/tenants/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
-    const { name, wa_token, phone_number_id, verify_token, owner_phone, owner_email, status } = req.body || {};
+    const { name, wa_token, phone_number_id, owner_phone, owner_email, status } = req.body || {};
 
     const fields = {};
     if (name)            fields.name = name;
     if (phone_number_id) fields.phone_number_id = phone_number_id;
-    if (verify_token)    fields.verify_token = verify_token;
     if (owner_phone)     fields.owner_phone = owner_phone;
     if (owner_email)     fields.owner_email = owner_email;
     if (status)          fields.status = status;
@@ -187,25 +207,32 @@ router.patch('/tenants/:slug', async (req, res) => {
     res.json({ ok: true, tenant: updated });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error actualizando tenant');
+    if (err.code === '23505') {
+      const msg = UNIQUE_ERRORS[err.constraint] || 'Dato duplicado — verifica nombre, teléfono o email';
+      return res.status(409).json({ ok: false, error: msg });
+    }
     res.status(500).json({ ok: false, error: 'Error interno' });
   }
 });
 
 // ── Productos ─────────────────────────────────────────────────────────────────
 
-router.get('/tenants/:slug/products', async (req, res) => {
+router.get('/tenants/:slug/products', async (req, res, next) => {
   try {
+    const { slug } = req.params;
+    const tenantRow = await query('SELECT id FROM tenants WHERE slug = $1', [slug]);
+    if (!tenantRow.rows[0]) {
+      return res.status(404).json({ ok: false, error: 'Tenant no encontrado' });
+    }
+
     const { rows } = await query(
-      `SELECT p.* FROM products p
-       JOIN tenants t ON t.id = p.tenant_id
-       WHERE t.slug = $1
-       ORDER BY p.created_at DESC`,
-      [req.params.slug]
+      'SELECT * FROM products WHERE tenant_id = $1 ORDER BY created_at DESC',
+      [tenantRow.rows[0].id]
     );
     res.json({ ok: true, products: rows });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error listando productos');
-    res.status(500).json({ ok: false, error: 'Error interno' });
+    next(err);
   }
 });
 
@@ -387,13 +414,19 @@ router.get('/tenants/:slug/prompt-preview', async (req, res) => {
 
 // ── Uso de IA ─────────────────────────────────────────────────────────────────
 
-router.get('/tenants/:slug/ai-usage', async (req, res) => {
+router.get('/tenants/:slug/ai-usage', async (req, res, next) => {
   try {
-    const usage = await getUsage(req.params.slug);
+    const { slug } = req.params;
+    const tenantRow = await query('SELECT id FROM tenants WHERE slug = $1', [slug]);
+    if (!tenantRow.rows[0]) {
+      return res.status(404).json({ ok: false, error: 'Tenant no encontrado' });
+    }
+
+    const usage = await getUsage(slug);
     res.json({ ok: true, ...usage });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error obteniendo uso IA');
-    res.status(500).json({ ok: false, error: 'Error interno' });
+    next(err);
   }
 });
 

@@ -1,0 +1,117 @@
+# nginx/templates/default.conf.template
+# Procesado automáticamente por el entrypoint del contenedor nginx oficial.
+# La variable ${DOMAIN} se sustituye con el valor del env var DOMAIN al arrancar.
+
+events {
+  worker_connections 1024;
+}
+
+http {
+  server_tokens off;
+  add_header X-Frame-Options "DENY" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "no-referrer" always;
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+  client_max_body_size 1m;
+
+  gzip on;
+  gzip_vary on;
+  gzip_types application/json text/plain;
+  gzip_min_length 1024;
+
+  limit_req_zone $binary_remote_addr zone=webhook:10m rate=20r/s;
+
+  log_format main '$remote_addr - $remote_user [$time_local] '
+                  '"$request" $status $body_bytes_sent '
+                  '"$http_referer" "$http_user_agent" rt=$request_time';
+  access_log /var/log/nginx/access.log main;
+  error_log  /var/log/nginx/error.log warn;
+
+  # ── HTTP — solo para ACME challenge y redirect a HTTPS ────────────────────
+  server {
+    listen 80;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+      root /var/www/certbot;
+    }
+
+    location = /health {
+      proxy_pass http://app:3000;
+      proxy_set_header Host $host;
+    }
+
+    location / {
+      return 301 https://$host$request_uri;
+    }
+  }
+
+  # ── HTTPS ─────────────────────────────────────────────────────────────────
+  server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    location ~ ^/webhook/[a-z0-9-]+$ {
+      limit_req zone=webhook burst=50 nodelay;
+      proxy_pass http://app:3000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_read_timeout 10s;
+      proxy_connect_timeout 5s;
+    }
+
+    location /admin/ {
+      # Descomentar para restringir por IP:
+      # allow YOUR.STATIC.IP;
+      # deny all;
+      proxy_pass http://app:3000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_read_timeout 30s;
+    }
+
+    location /panel/ {
+      # Descomentar para restringir por IP:
+      # allow YOUR.STATIC.IP;
+      # deny all;
+      proxy_pass http://app:3000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_read_timeout 30s;
+    }
+
+    location /panel-ui/ {
+      proxy_pass http://app:3000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_read_timeout 10s;
+    }
+
+    # /metrics — bloqueado externamente; solo accesible desde red interna o con X-Api-Key
+    location /metrics {
+      deny all;
+    }
+
+    location / {
+      proxy_pass http://app:3000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+    }
+  }
+}

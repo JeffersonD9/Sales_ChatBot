@@ -12,6 +12,7 @@
 const express  = require('express');
 const service  = require('./service');
 const { requireAuth } = require('./middleware');
+const { isDbConnectionError } = require('../../db');
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ function _clearTokenCookies(res) {
   res.clearCookie('panel_rt', base);
 }
 
-// POST /panel/auth/login
+// POST /panel/auth/login — Body: { username, password }
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body || {};
@@ -54,6 +55,9 @@ router.post('/login', async (req, res) => {
     _setTokenCookies(res, accessToken, refreshToken);
     return res.json({ ok: true, user });
   } catch (err) {
+    if (isDbConnectionError(err)) {
+      return res.status(503).json({ ok: false, error: 'Servicio no disponible temporalmente' });
+    }
     return res.status(err.status || 500).json({ ok: false, error: err.message });
   }
 });
@@ -73,6 +77,9 @@ router.post('/refresh', async (req, res) => {
     return res.json({ ok: true, user });
   } catch (err) {
     _clearTokenCookies(res);
+    if (isDbConnectionError(err)) {
+      return res.status(503).json({ ok: false, error: 'Servicio no disponible temporalmente' });
+    }
     return res.status(err.status || 500).json({ ok: false, error: err.message });
   }
 });

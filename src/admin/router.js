@@ -1,11 +1,13 @@
 'use strict';
 
 const express    = require('express');
-const { requireApiKey }             = require('./middleware');
+const { adminMiddleware }           = require('./middleware');
 const repo                          = require('../tenants/repository');
 const { invalidate }                = require('../tenants/loader');
 const { encrypt }                   = require('../utils/crypto');
-const { query, getPool }            = require('../db');
+const { eq, and, sql }              = require('drizzle-orm');
+const { getDb }                     = require('../drizzle/db');
+const { tenants, products }         = require('../drizzle/schema');
 const { logger }                    = require('../utils/logger');
 const {
   createTenantSchema,
@@ -15,7 +17,7 @@ const {
 } = require('../utils/tenantSchema');
 
 const router = express.Router();
-router.use(requireApiKey);
+router.use(adminMiddleware);
 
 function validate(schema, body) {
   const result = schema.safeParse(body);
@@ -28,44 +30,47 @@ function validate(schema, body) {
   return result.data;
 }
 
-// ── GET /admin/tenants — Listar todos los tenants ─────────────────────────
+// ── GET /admin/tenants ────────────────────────────────────────────────────────
 router.get('/tenants', async (req, res, next) => {
   try {
-    const tenants = await repo.listAll();
-    res.json({ tenants });
+    const list = await repo.listAll();
+    res.json({ tenants: list });
   } catch (err) {
     logger.error({ err: err.message }, '[Admin] Error listando tenants');
     next(err);
   }
 });
 
-// ── POST /admin/tenants — Crear nuevo tenant ──────────────────────────────
+// ── POST /admin/tenants ───────────────────────────────────────────────────────
 router.post('/tenants', async (req, res, next) => {
   try {
     const data = validate(createTenantSchema, req.body);
+    const db   = getDb();
 
-    const slugCheck = await query('SELECT id FROM tenants WHERE slug = $1', [data.slug]);
-    if (slugCheck.rows.length > 0) {
+    const slugCheck = await db
+      .select({ id: tenants.id }).from(tenants)
+      .where(eq(tenants.slug, data.slug)).limit(1);
+    if (slugCheck.length > 0) {
       return res.status(409).json({ error: `El slug '${data.slug}' ya está en uso` });
     }
 
-    const phoneCheck = await query(
-      "SELECT id FROM tenants WHERE owner_phone = $1 AND status != 'suspended'",
-      [data.owner_phone]
-    );
-    if (phoneCheck.rows.length > 0) {
+    const phoneCheck = await db
+      .select({ id: tenants.id }).from(tenants)
+      .where(and(eq(tenants.owner_phone, data.owner_phone), sql`${tenants.status} != 'suspended'`))
+      .limit(1);
+    if (phoneCheck.length > 0) {
       return res.status(409).json({ error: 'El número de teléfono ya está registrado en otro tenant' });
     }
 
     const tenant = await repo.create({
-      slug:              data.slug,
-      name:              data.name,
+      slug:               data.slug,
+      name:               data.name,
       wa_token_encrypted: encrypt(data.wa_token),
-      phone_number_id:   data.phone_number_id,
-      verify_token:      data.verify_token,
-      owner_phone:       data.owner_phone,
-      owner_email:       data.owner_email,
-      bot_config:        data.bot_config,
+      phone_number_id:    data.phone_number_id,
+      verify_token:       data.verify_token,
+      owner_phone:        data.owner_phone,
+      owner_email:        data.owner_email,
+      bot_config:         data.bot_config,
     });
     logger.info({ tenantSlug: data.slug }, '[Admin] Tenant creado');
     res.status(201).json({ tenant });
@@ -87,11 +92,16 @@ router.patch('/tenants/:slug', async (req, res, next) => {
     }
 
     if (updates.owner_phone) {
-      const phoneCheck = await query(
-        "SELECT id FROM tenants WHERE owner_phone = $1 AND status != 'suspended' AND slug != $2",
-        [updates.owner_phone, slug]
-      );
-      if (phoneCheck.rows.length > 0) {
+      const db         = getDb();
+      const phoneCheck = await db
+        .select({ id: tenants.id }).from(tenants)
+        .where(and(
+          eq(tenants.owner_phone, updates.owner_phone),
+          sql`${tenants.status} != 'suspended'`,
+          sql`${tenants.slug} != ${slug}`
+        ))
+        .limit(1);
+      if (phoneCheck.length > 0) {
         return res.status(409).json({ error: 'El número de teléfono ya está registrado en otro tenant' });
       }
     }
@@ -141,39 +151,49 @@ router.patch('/tenants/:slug/meta-status', async (req, res, next) => {
   }
 });
 
-// ── GET /admin/tenants/:slug/products — Listar productos ──────────────────
+// ── GET /admin/tenants/:slug/products ─────────────────────────────────────────
 router.get('/tenants/:slug/products', async (req, res, next) => {
   try {
-    const result = await query(
-      `SELECT p.* FROM products p
-       JOIN tenants t ON p.tenant_id = t.id
-       WHERE t.slug = $1
-       ORDER BY p.price DESC`,
-      [req.params.slug]
-    );
-    res.json({ products: result.rows });
+    const db   = getDb();
+    const rows = await db
+      .select()
+      .from(products)
+      .innerJoin(tenants, eq(tenants.id, products.tenant_id))
+      .where(eq(tenants.slug, req.params.slug))
+      .orderBy(sql`${products.price} DESC`);
+    res.json({ products: rows.map((r) => r.products) });
   } catch (err) {
     next(err);
   }
 });
 
-// ── POST /admin/tenants/:slug/products — Agregar producto ─────────────────
+// ── POST /admin/tenants/:slug/products ────────────────────────────────────────
 router.post('/tenants/:slug/products', async (req, res, next) => {
   const { slug } = req.params;
   try {
-    const data   = validate(createProductSchema, req.body);
-    const result = await query(
-      `INSERT INTO products
-         (tenant_id, name, description, price, sizes, image_url, emoji, category)
-       VALUES (
-         (SELECT id FROM tenants WHERE slug = $1),
-         $2, $3, $4, $5, $6, $7, $8
-       )
-       RETURNING *`,
-      [slug, data.name, data.description, data.price, data.sizes, data.image_url, data.emoji, data.category || '']
-    );
+    const data      = validate(createProductSchema, req.body);
+    const db        = getDb();
+    const tenantRow = await db
+      .select({ id: tenants.id }).from(tenants)
+      .where(eq(tenants.slug, slug)).limit(1);
+    if (!tenantRow[0]) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    const rows = await db
+      .insert(products)
+      .values({
+        tenant_id:   tenantRow[0].id,
+        name:        data.name,
+        description: data.description,
+        price:       data.price,
+        sizes:       data.sizes,
+        image_url:   data.image_url,
+        emoji:       data.emoji,
+        category:    data.category || '',
+      })
+      .returning();
+
     invalidate(slug);
-    res.status(201).json({ product: result.rows[0] });
+    res.status(201).json({ product: rows[0] });
   } catch (err) {
     logger.error({ slug, err: err.message }, '[Admin] Error creando producto');
     next(err);
@@ -215,25 +235,28 @@ router.post('/tenants/:slug/products/bulk', async (req, res, next) => {
       return res.status(400).json({ inserted: 0, errors });
     }
 
-    const client = await getPool().connect();
+    const db        = getDb();
+    const tenantRow = await db
+      .select({ id: tenants.id }).from(tenants)
+      .where(eq(tenants.slug, slug)).limit(1);
+    if (!tenantRow[0]) return res.status(404).json({ error: 'Tenant no encontrado' });
+
     let inserted = 0;
-    try {
-      await client.query('BEGIN');
+    await db.transaction(async (tx) => {
       for (const p of valid) {
-        await client.query(
-          `INSERT INTO products (tenant_id, name, description, price, sizes, image_url, emoji, category)
-           VALUES ((SELECT id FROM tenants WHERE slug = $1), $2, $3, $4, $5, $6, $7, $8)`,
-          [slug, p.name, p.description, p.price, p.sizes, p.image_url, p.emoji, p.category || '']
-        );
+        await tx.insert(products).values({
+          tenant_id:   tenantRow[0].id,
+          name:        p.name,
+          description: p.description,
+          price:       p.price,
+          sizes:       p.sizes,
+          image_url:   p.image_url,
+          emoji:       p.emoji,
+          category:    p.category || '',
+        });
         inserted++;
       }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
 
     invalidate(slug);
     logger.info({ slug, inserted, errors: errors.length }, '[Admin] Bulk import productos');
@@ -244,47 +267,54 @@ router.post('/tenants/:slug/products/bulk', async (req, res, next) => {
   }
 });
 
-// ── PUT /admin/tenants/:slug/products/:productId — Editar producto ─────────
+// ── PUT /admin/tenants/:slug/products/:productId ──────────────────────────────
 router.put('/tenants/:slug/products/:productId', async (req, res, next) => {
   const { slug, productId } = req.params;
   try {
     const data   = validate(updateProductSchema, req.body);
-    const fields = Object.keys(data).filter((k) => data[k] !== undefined);
-    if (fields.length === 0) {
+    const fields = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
+    if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'No se enviaron campos a actualizar' });
     }
 
-    const sets   = fields.map((k, i) => `${k} = $${i + 3}`).join(', ');
-    const values = fields.map((k) => data[k]);
+    const db        = getDb();
+    const tenantRow = await db
+      .select({ id: tenants.id }).from(tenants)
+      .where(eq(tenants.slug, slug)).limit(1);
+    if (!tenantRow[0]) return res.status(404).json({ error: 'Tenant no encontrado' });
 
-    const result = await query(
-      `UPDATE products SET ${sets}
-       WHERE id = $1
-         AND tenant_id = (SELECT id FROM tenants WHERE slug = $2)
-       RETURNING *`,
-      [productId, slug, ...values]
-    );
-    if (!result.rows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
+    const rows = await db
+      .update(products)
+      .set(fields)
+      .where(and(eq(products.id, productId), eq(products.tenant_id, tenantRow[0].id)))
+      .returning();
+
+    if (!rows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
     invalidate(slug);
-    res.json({ product: result.rows[0] });
+    res.json({ product: rows[0] });
   } catch (err) {
     logger.error({ slug, productId, err: err.message }, '[Admin] Error editando producto');
     next(err);
   }
 });
 
-// ── DELETE /admin/tenants/:slug/products/:productId — Desactivar producto ─
+// ── DELETE /admin/tenants/:slug/products/:productId ───────────────────────────
 router.delete('/tenants/:slug/products/:productId', async (req, res, next) => {
   const { slug, productId } = req.params;
   try {
-    const result = await query(
-      `UPDATE products SET active = false
-       WHERE id = $1
-         AND tenant_id = (SELECT id FROM tenants WHERE slug = $2)
-       RETURNING id`,
-      [productId, slug]
-    );
-    if (!result.rows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
+    const db        = getDb();
+    const tenantRow = await db
+      .select({ id: tenants.id }).from(tenants)
+      .where(eq(tenants.slug, slug)).limit(1);
+    if (!tenantRow[0]) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    const rows = await db
+      .update(products)
+      .set({ active: false })
+      .where(and(eq(products.id, productId), eq(products.tenant_id, tenantRow[0].id)))
+      .returning({ id: products.id });
+
+    if (!rows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
     invalidate(slug);
     res.json({ ok: true });
   } catch (err) {
@@ -292,7 +322,7 @@ router.delete('/tenants/:slug/products/:productId', async (req, res, next) => {
   }
 });
 
-// ── GET /admin/tenants/:slug/ai-usage — Uso de IA del tenant ─────────────
+// ── GET /admin/tenants/:slug/ai-usage ─────────────────────────────────────────
 router.get('/tenants/:slug/ai-usage', async (req, res, next) => {
   try {
     const { getUsage } = require('../core/ai/aiMetrics');

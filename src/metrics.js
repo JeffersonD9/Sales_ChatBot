@@ -16,12 +16,15 @@
  */
 
 const express                       = require('express');
+const { requireApiKey }             = require('./admin/middleware');
 const { getActiveSessions }         = require('./core/state/manager');
 const { cachedSlugs }               = require('./tenants/loader');
 const { getRedis }                  = require('./redis');
 const { logger }                    = require('./utils/logger');
 
 const router = express.Router();
+
+router.use(requireApiKey);
 
 router.get('/', async (_req, res) => {
   try {

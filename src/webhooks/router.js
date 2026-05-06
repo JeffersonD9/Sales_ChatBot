@@ -12,11 +12,20 @@ const { verifyMetaSignature } = require('./verifier');
 const { dispatch }            = require('./dispatcher');
 const tenantLoader            = require('../tenants/loader');
 const { logger }              = require('../utils/logger');
+const { validateSlug, ipRateLimit } = require('../middleware/security');
 
 const router = express.Router({ mergeParams: true });
 
+// Rate limit en GET: 15 req/min por IP para prevenir enumeración de slugs.
+// Meta solo hace GET durante el setup inicial — un humano legítimo no necesita más.
+const webhookVerifyRateLimit = ipRateLimit({
+  prefix:    'webhook-verify',
+  max:       parseInt(process.env.WEBHOOK_VERIFY_RATE_LIMIT || '15', 10),
+  windowSec: 60,
+});
+
 // GET /webhook/:slug — Verificacion inicial (handshake Meta)
-router.get('/:slug', async (req, res) => {
+router.get('/:slug', validateSlug, webhookVerifyRateLimit, async (req, res) => {
   const { slug }  = req.params;
   const mode      = req.query['hub.mode'];
   const token     = req.query['hub.verify_token'];
@@ -40,7 +49,9 @@ router.get('/:slug', async (req, res) => {
 });
 
 // POST /webhook/:slug — Mensajes entrantes
-router.post('/:slug', (req, res) => {
+// validateSlug antes de cualquier procesamiento: descarta slugs con caracteres inválidos
+// (path traversal, inyecciones) sin tocar la DB ni el HMAC.
+router.post('/:slug', validateSlug, (req, res) => {
   const { slug } = req.params;
 
   // 1. Verificar firma HMAC ANTES de responder — rechaza requests falsos con 401

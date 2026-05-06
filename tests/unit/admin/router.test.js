@@ -3,8 +3,17 @@
 const request = require('supertest');
 const express = require('express');
 
+// ── Mock del cliente Drizzle ──────────────────────────────────────────────────
+
+const { createMockDb } = require('../../helpers/mockDb');
+const mockDb = createMockDb();
+
+jest.mock('../../../src/drizzle/db', () => ({ getDb: () => mockDb }));
+jest.mock('../../../src/db', () => ({ getPool: jest.fn(), healthCheck: jest.fn() }));
+
 jest.mock('../../../src/admin/middleware', () => ({
-  requireApiKey: (_req, _res, next) => next(),
+  requireApiKey:   (_req, _res, next) => next(),
+  adminMiddleware: [(_req, _res, next) => next()],
 }));
 jest.mock('../../../src/tenants/repository');
 jest.mock('../../../src/tenants/loader', () => ({ invalidate: jest.fn() }));
@@ -13,10 +22,7 @@ jest.mock('../../../src/utils/logger', () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 
-const db = require('../../../src/db');
-jest.mock('../../../src/db');
-
-const repo     = require('../../../src/tenants/repository');
+const repo        = require('../../../src/tenants/repository');
 const adminRouter = require('../../../src/admin/router');
 
 function buildApp() {
@@ -35,9 +41,12 @@ const validTenantBody = {
   owner_phone:     '573001234567',
 };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockDb._clearQueue();
+});
 
-// ── POST /admin/tenants ────────────────────────────────────────────────────
+// ── POST /admin/tenants ────────────────────────────────────────────────────────
 
 describe('POST /admin/tenants', () => {
   test('slug con caracteres inválidos → 400', async () => {
@@ -67,8 +76,7 @@ describe('POST /admin/tenants', () => {
   });
 
   test('slug duplicado → 409', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ id: 'existing-id' }] }); // slug check
+    mockDb._enqueue([{ id: 'existing-id' }]); // slug check → ocupado
     const app = buildApp();
     const res = await request(app)
       .post('/admin/tenants')
@@ -78,9 +86,8 @@ describe('POST /admin/tenants', () => {
   });
 
   test('teléfono duplicado → 409', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [] })                       // slug check (libre)
-      .mockResolvedValueOnce({ rows: [{ id: 'other-id' }] });   // phone check (ocupado)
+    mockDb._enqueue([]);                   // slug check → libre
+    mockDb._enqueue([{ id: 'other-id' }]); // phone check → ocupado
     const app = buildApp();
     const res = await request(app)
       .post('/admin/tenants')
@@ -90,9 +97,8 @@ describe('POST /admin/tenants', () => {
   });
 
   test('datos válidos → 201 con tenant', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [] }) // slug libre
-      .mockResolvedValueOnce({ rows: [] }); // phone libre
+    mockDb._enqueue([]); // slug libre
+    mockDb._enqueue([]); // phone libre
     repo.create.mockResolvedValue({ id: 'new-id', slug: 'tienda-uno', name: 'Tienda Uno', status: 'active' });
     const app = buildApp();
     const res = await request(app)
@@ -103,7 +109,7 @@ describe('POST /admin/tenants', () => {
   });
 });
 
-// ── PATCH /admin/tenants/:slug ─────────────────────────────────────────────
+// ── PATCH /admin/tenants/:slug ─────────────────────────────────────────────────
 
 describe('PATCH /admin/tenants/:slug', () => {
   test('status inválido → 400', async () => {
@@ -136,7 +142,7 @@ describe('PATCH /admin/tenants/:slug', () => {
   });
 
   test('cambiar teléfono a uno ya usado → 409', async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ id: 'other' }] }); // phone en uso
+    mockDb._enqueue([{ id: 'other' }]); // phone en uso
     const app = buildApp();
     const res = await request(app)
       .patch('/admin/tenants/tienda-uno')
@@ -145,7 +151,7 @@ describe('PATCH /admin/tenants/:slug', () => {
   });
 });
 
-// ── PATCH /admin/tenants/:slug/status ─────────────────────────────────────
+// ── PATCH /admin/tenants/:slug/status ─────────────────────────────────────────
 
 describe('PATCH /admin/tenants/:slug/status', () => {
   test('status válido → 200', async () => {
@@ -179,7 +185,7 @@ describe('PATCH /admin/tenants/:slug/status', () => {
   });
 });
 
-// ── PATCH /admin/tenants/:slug/meta-status ────────────────────────────────
+// ── PATCH /admin/tenants/:slug/meta-status ────────────────────────────────────
 
 describe('PATCH /admin/tenants/:slug/meta-status', () => {
   test('meta_live: true → meta_connected_at en respuesta', async () => {
@@ -228,22 +234,25 @@ describe('PATCH /admin/tenants/:slug/meta-status', () => {
   });
 });
 
-// ── DELETE /admin/tenants/:slug/products/:id ──────────────────────────────
+// ── DELETE /admin/tenants/:slug/products/:id ──────────────────────────────────
 
 describe('DELETE /admin/tenants/:slug/products/:id', () => {
   test('producto existe → active=false, 200', async () => {
-    db.query.mockResolvedValue({ rows: [{ id: 'prod-1' }] });
+    mockDb._enqueue([{ id: 'tenant-uuid' }]); // tenant lookup
+    mockDb._enqueue([{ id: 'prod-1' }]);       // UPDATE products returning
     const app = buildApp();
     const res = await request(app)
       .delete('/admin/tenants/tienda-uno/products/prod-1');
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    // Verifica que usa UPDATE (soft delete), no DELETE
-    expect(db.query.mock.calls[0][0]).toMatch(/UPDATE products SET active = false/);
+    // Verifica que se llamó update (soft delete) y no delete
+    expect(mockDb.update).toHaveBeenCalled();
+    expect(mockDb.delete).not.toHaveBeenCalled();
   });
 
   test('producto no encontrado → 404', async () => {
-    db.query.mockResolvedValue({ rows: [] });
+    mockDb._enqueue([{ id: 'tenant-uuid' }]); // tenant lookup
+    mockDb._enqueue([]);                        // UPDATE no matcheó
     const app = buildApp();
     const res = await request(app)
       .delete('/admin/tenants/tienda-uno/products/no-existe');
@@ -251,11 +260,12 @@ describe('DELETE /admin/tenants/:slug/products/:id', () => {
   });
 });
 
-// ── PUT /admin/tenants/:slug/products/:id ─────────────────────────────────
+// ── PUT /admin/tenants/:slug/products/:id ─────────────────────────────────────
 
 describe('PUT /admin/tenants/:slug/products/:id', () => {
   test('productId de otro tenant → 404', async () => {
-    db.query.mockResolvedValue({ rows: [] }); // UPDATE no matcheó (tenant_id distinto)
+    mockDb._enqueue([{ id: 'tenant-uuid' }]); // tenant lookup
+    mockDb._enqueue([]);                        // UPDATE no matcheó (tenant_id distinto)
     const app = buildApp();
     const res = await request(app)
       .put('/admin/tenants/tienda-uno/products/prod-otro')
@@ -272,7 +282,8 @@ describe('PUT /admin/tenants/:slug/products/:id', () => {
   });
 
   test('actualización válida → 200', async () => {
-    db.query.mockResolvedValue({ rows: [{ id: 'prod-1', name: 'Vestido rojo', price: 80000 }] });
+    mockDb._enqueue([{ id: 'tenant-uuid' }]);                              // tenant lookup
+    mockDb._enqueue([{ id: 'prod-1', name: 'Vestido rojo', price: 80000 }]); // UPDATE returning
     const app = buildApp();
     const res = await request(app)
       .put('/admin/tenants/tienda-uno/products/prod-1')

@@ -19,7 +19,7 @@ const configRouter         = require('./tenants/configRouter');
 const demoRouter           = require('./demo/router');
 const metricsRouter        = require('./metrics');
 const panelRouter          = require('./panel/routes');
-const { healthCheck }      = require('./db');
+const { healthCheck, isDbConnectionError } = require('./db');
 const { redisHealthCheck } = require('./redis');
 const { logger }           = require('./utils/logger');
 
@@ -87,6 +87,13 @@ app.use((req, res) => {
 
 // ── 7. Error handler global ───────────────────────────────────────────────
 app.use((err, req, res, next) => {
+  if (isDbConnectionError(err)) {
+    logger.warn({ err: err.message, path: req.path }, '[App] Base de datos no disponible');
+    return res.status(503).json({ error: 'Base de datos no disponible temporalmente' });
+  }
+  if (err.status && err.status < 500) {
+    return res.status(err.status).json({ error: err.message });
+  }
   logger.error({ err: err.message, path: req.path }, '[App] Error no manejado');
   res.status(500).json({ error: 'Error interno del servidor' });
 });

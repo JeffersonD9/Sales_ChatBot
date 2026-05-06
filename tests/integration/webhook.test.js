@@ -218,6 +218,36 @@ describe('GET /health', () => {
   });
 });
 
+// ── GET /metrics — protegido por ADMIN_API_KEY ────────────────────────────────
+
+describe('GET /metrics', () => {
+  const ADMIN_KEY = 'test-admin-api-key-32chars-xxxxxxx';
+
+  beforeAll(() => {
+    process.env.ADMIN_API_KEY = ADMIN_KEY;
+  });
+
+  test('returns 401 without X-Api-Key', async () => {
+    const res = await supertest(app).get('/metrics');
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 401 with wrong X-Api-Key', async () => {
+    const res = await supertest(app)
+      .get('/metrics')
+      .set('x-api-key', 'wrong-key');
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 200 with correct X-Api-Key', async () => {
+    const res = await supertest(app)
+      .get('/metrics')
+      .set('x-api-key', ADMIN_KEY);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('whatsapp_saas_uptime_seconds');
+  });
+});
+
 // ── 404 handler ───────────────────────────────────────────────────────────────
 
 describe('404 handler', () => {

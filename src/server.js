@@ -22,6 +22,7 @@ const { closePool }          = require('./db');
 const { closeRedis }         = require('./redis');
 const { checkReactivations }   = require('./core/flow-engine/engine');
 const { checkBillingCycle }    = require('./billing/billingService');
+const { startScheduler }       = require('./core/scheduler');
 const { getActiveSessions, saveState } = require('./core/state/manager');
 const { cleanExpiredSessions } = require('./panel/auth/service');
 const tenantLoader             = require('./tenants/loader');
@@ -53,6 +54,9 @@ if (process.env.NODE_ENV !== 'test') {
       logger.error({ err: err.message }, '[Server] Error limpiando sesiones panel')
     );
   }, 60 * 60 * 1000);
+
+  // Premium IA: cart recovery + resumen diario
+  startScheduler();
 
   // Reactivaciones cada hora — tenant-aware
   setInterval(async () => {

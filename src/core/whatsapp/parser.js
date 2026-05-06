@@ -31,6 +31,21 @@ function extractInput(msg) {
     }
   }
 
+  if (msg.type === 'audio') {
+    return { type: 'audio', mediaId: msg.audio?.id || '', text: '', interactiveId: '', interactiveTitle: '' };
+  }
+
+  if (msg.type === 'image') {
+    return {
+      type:             'image',
+      mediaId:          msg.image?.id || '',
+      mimeType:         msg.image?.mime_type || 'image/jpeg',
+      text:             '',
+      interactiveId:    '',
+      interactiveTitle: '',
+    };
+  }
+
   return { type: 'unsupported', text: '', interactiveId: '', interactiveTitle: '' };
 }
 

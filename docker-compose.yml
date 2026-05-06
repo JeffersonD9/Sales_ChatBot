@@ -35,11 +35,11 @@ services:
     image: redis:7-alpine
     container_name: whatsapp-saas-redis
     restart: unless-stopped
-    command: redis-server --save "" --appendonly no   # sin persistencia en dev/prod estándar
+    command: redis-server --save "" --appendonly no --requirepass ${REDIS_PASSWORD}
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

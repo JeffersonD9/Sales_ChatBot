@@ -3,13 +3,10 @@
 /**
  * panel/auth/service.js — Lógica de autenticación del panel
  *
- * Importa solo: src/db.js, src/utils/logger.js
- * (sin Redis — rate limiting persiste en DB para sobrevivir reinicios)
- *
  * Garantías de seguridad:
  *   - bcrypt cost 12 para passwords
  *   - Refresh token: crypto.randomBytes(64), HMAC-SHA256 antes de guardar en DB
- *   - Access token: JWT 15 min con { sub, username, role, tenant_id, sid }
+ *   - Access token: JWT 10 min con { sub, username, role, tenant_id, sid }
  *   - Rotación de sesiones en cada refresh
  *   - Rate limiting: 5 intentos / 15 min por IP → bloqueo 15 min
  *   - Timing-safe: bcrypt.compare (no ===), timingSafeEqual para HMAC
@@ -20,14 +17,16 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt    = require('jsonwebtoken');
 
-const { query }  = require('../../db');
-const { logger } = require('../../utils/logger');
+const { eq, and, lt, sql, or } = require('drizzle-orm');
+const { getDb }        = require('../../drizzle/db');
+const { panelUsers, panelSessions, panelRateLimits } = require('../../drizzle/schema');
+const { logger }       = require('../../utils/logger');
 
 const ACCESS_TOKEN_TTL   = '10m';
 const REFRESH_TOKEN_DAYS = 7;
-const RATE_WINDOW_MS     = 15 * 60 * 1000; // 15 minutos
+const RATE_WINDOW_MS     = 15 * 60 * 1000;
 const RATE_MAX_ATTEMPTS  = 5;
-const RATE_BLOCK_MS      = 15 * 60 * 1000; // 15 minutos
+const RATE_BLOCK_MS      = 15 * 60 * 1000;
 
 function _refreshSecret() {
   const s = process.env.PANEL_REFRESH_SECRET;
@@ -42,116 +41,90 @@ function _jwtSecret() {
 }
 
 function _hmac(token) {
-  return crypto
-    .createHmac('sha256', _refreshSecret())
-    .update(token)
-    .digest('hex');
+  return crypto.createHmac('sha256', _refreshSecret()).update(token).digest('hex');
 }
 
 function _generateRefreshToken() {
   return crypto.randomBytes(64).toString('hex');
 }
 
-/**
- * Verifica rate limit por IP. Lanza error si está bloqueado.
- * Incrementa el contador si no lo está.
- * @param {string} ip
- */
 async function _checkRateLimit(ip) {
+  const db  = getDb();
   const key = `login:ip::${ip}`;
   const now = new Date();
 
-  const { rows } = await query(
-    'SELECT count, first_attempt_at, blocked_until FROM panel_rate_limits WHERE key = $1',
-    [key]
-  );
+  const rows = await db
+    .select()
+    .from(panelRateLimits)
+    .where(eq(panelRateLimits.key, key))
+    .limit(1);
 
   if (rows.length > 0) {
     const row = rows[0];
 
-    // Bloqueado activamente
     if (row.blocked_until && new Date(row.blocked_until) > now) {
       const err = new Error('Demasiados intentos fallidos. Intenta en 15 minutos.');
       err.status = 429;
       throw err;
     }
 
-    // Ventana expirada → reiniciar
     if (row.first_attempt_at && (now - new Date(row.first_attempt_at)) > RATE_WINDOW_MS) {
-      await query(
-        `UPDATE panel_rate_limits
-         SET count = 1, first_attempt_at = $2, blocked_until = NULL
-         WHERE key = $1`,
-        [key, now]
-      );
+      await db.update(panelRateLimits)
+        .set({ count: 1, first_attempt_at: now, blocked_until: null })
+        .where(eq(panelRateLimits.key, key));
       return;
     }
 
-    // Dentro de la ventana — ¿ya alcanzó el límite?
     if (row.count >= RATE_MAX_ATTEMPTS) {
       const blockedUntil = new Date(now.getTime() + RATE_BLOCK_MS);
-      await query(
-        'UPDATE panel_rate_limits SET blocked_until = $2 WHERE key = $1',
-        [key, blockedUntil]
-      );
+      await db.update(panelRateLimits)
+        .set({ blocked_until: blockedUntil })
+        .where(eq(panelRateLimits.key, key));
       logger.warn({ ip }, '[Panel] Rate limit excedido — IP bloqueada 15 min');
       const err = new Error('Demasiados intentos fallidos. Intenta en 15 minutos.');
       err.status = 429;
       throw err;
     }
 
-    await query(
-      'UPDATE panel_rate_limits SET count = count + 1 WHERE key = $1',
-      [key]
-    );
+    await db.update(panelRateLimits)
+      .set({ count: sql`${panelRateLimits.count} + 1` })
+      .where(eq(panelRateLimits.key, key));
   } else {
-    await query(
-      `INSERT INTO panel_rate_limits (key, count, first_attempt_at)
-       VALUES ($1, 1, $2)
-       ON CONFLICT (key) DO UPDATE
-         SET count = panel_rate_limits.count + 1`,
-      [key, now]
-    );
+    await db.insert(panelRateLimits)
+      .values({ key, count: 1, first_attempt_at: now })
+      .onConflictDoUpdate({
+        target: panelRateLimits.key,
+        set:    { count: sql`${panelRateLimits.count} + 1` },
+      });
   }
 }
 
-/**
- * Limpia el rate limit tras un login exitoso.
- * @param {string} ip
- */
 async function _clearRateLimit(ip) {
-  await query('DELETE FROM panel_rate_limits WHERE key = $1', [`login:ip::${ip}`]);
+  const db = getDb();
+  await db.delete(panelRateLimits).where(eq(panelRateLimits.key, `login:ip::${ip}`));
 }
 
-/**
- * Crea una nueva sesión en DB y retorna los tokens.
- * @param {{ id, username, role, tenant_id }} user
- * @param {string} ip
- * @param {string} userAgent
- * @returns {{ accessToken: string, refreshToken: string }}
- */
 async function _createSession(user, ip, userAgent) {
-  const refreshToken  = _generateRefreshToken();
-  const tokenHash     = _hmac(refreshToken);
-  const expiresAt     = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+  const db           = getDb();
+  const refreshToken = _generateRefreshToken();
+  const tokenHash    = _hmac(refreshToken);
+  const expiresAt    = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
 
-  const { rows } = await query(
-    `INSERT INTO panel_sessions (user_id, token_hash, expires_at, ip_address, user_agent)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id`,
-    [user.id, tokenHash, expiresAt, ip || null, userAgent || null]
-  );
+  const rows = await db
+    .insert(panelSessions)
+    .values({
+      user_id:    user.id,
+      token_hash: tokenHash,
+      expires_at: expiresAt,
+      ip_address: ip || null,
+      user_agent: userAgent || null,
+    })
+    .returning({ id: panelSessions.id });
 
   const sessionId = rows[0].id;
 
   const accessToken = jwt.sign(
-    {
-      sub:       user.id,
-      username:  user.username,
-      role:      user.role,
-      tenant_id: user.tenant_id || null,
-      sid:       sessionId,
-    },
+    { sub: user.id, username: user.username, role: user.role, tenant_id: user.tenant_id || null, sid: sessionId },
     _jwtSecret(),
     { expiresIn: ACCESS_TOKEN_TTL }
   );
@@ -163,24 +136,25 @@ async function _createSession(user, ip, userAgent) {
 
 // ── Exports públicos ──────────────────────────────────────────────────────────
 
-/**
- * Login con username + password.
- * @param {string} username
- * @param {string} password
- * @param {string} ip
- * @param {string} userAgent
- * @returns {{ accessToken, refreshToken, user }}
- */
 async function login(username, password, ip, userAgent) {
   await _checkRateLimit(ip);
 
-  const { rows } = await query(
-    'SELECT id, username, email, role, tenant_id, password_hash, is_active FROM panel_users WHERE username = $1',
-    [username]
-  );
+  const db   = getDb();
+  const rows = await db
+    .select({
+      id:            panelUsers.id,
+      username:      panelUsers.username,
+      email:         panelUsers.email,
+      role:          panelUsers.role,
+      tenant_id:     panelUsers.tenant_id,
+      password_hash: panelUsers.password_hash,
+      is_active:     panelUsers.is_active,
+    })
+    .from(panelUsers)
+    .where(eq(panelUsers.username, username))
+    .limit(1);
 
-  // Timing-safe: siempre ejecutar bcrypt aunque el usuario no exista
-  const dummyHash = '$2b$12$invalidhashpadding00000000000000000000000000000000000000';
+  const dummyHash  = '$2b$12$invalidhashpadding00000000000000000000000000000000000000';
   const storedHash = rows[0] ? rows[0].password_hash : dummyHash;
   const passwordOk = await bcrypt.compare(password, storedHash);
 
@@ -203,111 +177,96 @@ async function login(username, password, ip, userAgent) {
   };
 }
 
-/**
- * Rota el refresh token: revoca la sesión anterior y crea una nueva.
- * @param {string} refreshToken
- * @param {string} ip
- * @returns {{ accessToken, refreshToken, user }}
- */
 async function refresh(refreshToken, ip) {
+  const db        = getDb();
   const tokenHash = _hmac(refreshToken);
 
-  const { rows } = await query(
-    `SELECT ps.id, ps.user_id, ps.expires_at, ps.is_active,
-            pu.username, pu.role, pu.tenant_id, pu.is_active AS user_active
-     FROM panel_sessions ps
-     JOIN panel_users pu ON pu.id = ps.user_id
-     WHERE ps.token_hash = $1`,
-    [tokenHash]
-  );
+  const rows = await db
+    .select({
+      id:          panelSessions.id,
+      user_id:     panelSessions.user_id,
+      expires_at:  panelSessions.expires_at,
+      is_active:   panelSessions.is_active,
+      username:    panelUsers.username,
+      role:        panelUsers.role,
+      tenant_id:   panelUsers.tenant_id,
+      user_active: panelUsers.is_active,
+    })
+    .from(panelSessions)
+    .innerJoin(panelUsers, eq(panelUsers.id, panelSessions.user_id))
+    .where(eq(panelSessions.token_hash, tokenHash))
+    .limit(1);
 
-  if (!rows[0] || !rows[0].is_active || new Date(rows[0].expires_at) < new Date() || !rows[0].user_active) {
+  const s = rows[0];
+  if (!s || !s.is_active || new Date(s.expires_at) < new Date() || !s.user_active) {
     const err = new Error('Sesión inválida o expirada');
     err.status = 401;
     throw err;
   }
 
-  const session = rows[0];
+  await db.update(panelSessions)
+    .set({ is_active: false, revoked_at: sql`NOW()`, revoke_reason: 'rotated' })
+    .where(eq(panelSessions.id, s.id));
 
-  // Revocar sesión anterior
-  await query(
-    `UPDATE panel_sessions
-     SET is_active = false, revoked_at = NOW(), revoke_reason = 'rotated'
-     WHERE id = $1`,
-    [session.id]
-  );
-
-  const user = { id: session.user_id, username: session.username, role: session.role, tenant_id: session.tenant_id };
+  const user   = { id: s.user_id, username: s.username, role: s.role, tenant_id: s.tenant_id };
   const tokens = await _createSession(user, ip, null);
 
-  logger.info({ userId: user.id, oldSessionId: session.id }, '[Panel] Sesión rotada');
+  logger.info({ userId: user.id, oldSessionId: s.id }, '[Panel] Sesión rotada');
 
-  return {
-    ...tokens,
-    user: { id: user.id, username: user.username, role: user.role, tenantId: user.tenant_id },
-  };
+  return { ...tokens, user: { id: user.id, username: user.username, role: user.role, tenantId: user.tenant_id } };
 }
 
-/**
- * Revoca una sesión por refresh token.
- * @param {string} refreshToken
- */
 async function logout(refreshToken) {
+  const db        = getDb();
   const tokenHash = _hmac(refreshToken);
 
-  const { rows } = await query(
-    'SELECT id, user_id FROM panel_sessions WHERE token_hash = $1 AND is_active = true',
-    [tokenHash]
-  );
+  const rows = await db
+    .select({ id: panelSessions.id, user_id: panelSessions.user_id })
+    .from(panelSessions)
+    .where(and(eq(panelSessions.token_hash, tokenHash), eq(panelSessions.is_active, true)))
+    .limit(1);
 
   if (!rows[0]) return;
 
-  await query(
-    `UPDATE panel_sessions
-     SET is_active = false, revoked_at = NOW(), revoke_reason = 'logout'
-     WHERE id = $1`,
-    [rows[0].id]
-  );
+  await db.update(panelSessions)
+    .set({ is_active: false, revoked_at: sql`NOW()`, revoke_reason: 'logout' })
+    .where(eq(panelSessions.id, rows[0].id));
 
   logger.info({ userId: rows[0].user_id, sessionId: rows[0].id }, '[Panel] Logout');
 }
 
-/**
- * Revoca todas las sesiones activas de un usuario.
- * @param {string} userId
- */
 async function logoutAll(userId) {
-  await query(
-    `UPDATE panel_sessions
-     SET is_active = false, revoked_at = NOW(), revoke_reason = 'logout_all'
-     WHERE user_id = $1 AND is_active = true`,
-    [userId]
-  );
+  const db = getDb();
+
+  await db.update(panelSessions)
+    .set({ is_active: false, revoked_at: sql`NOW()`, revoke_reason: 'logout_all' })
+    .where(and(eq(panelSessions.user_id, userId), eq(panelSessions.is_active, true)));
 
   logger.info({ userId }, '[Panel] Logout all sessions');
 }
 
-/**
- * Valida un access token JWT y verifica que la sesión exista en DB.
- * Lanza error si el token es inválido, expirado, o la sesión fue revocada.
- * @param {string} token
- * @returns {{ sub, username, role, tenant_id, sid }}
- */
 async function validateAccessToken(token) {
   let payload;
   try {
     payload = jwt.verify(token, _jwtSecret());
-  } catch (err) {
+  } catch {
     const e = new Error('Token inválido o expirado');
     e.status = 401;
     throw e;
   }
 
-  const { rows } = await query(
-    `SELECT id FROM panel_sessions
-     WHERE id = $1 AND is_active = true AND expires_at > NOW()`,
-    [payload.sid]
-  );
+  const db   = getDb();
+  const rows = await db
+    .select({ id: panelSessions.id })
+    .from(panelSessions)
+    .where(
+      and(
+        eq(panelSessions.id, payload.sid),
+        eq(panelSessions.is_active, true),
+        sql`${panelSessions.expires_at} > NOW()`
+      )
+    )
+    .limit(1);
 
   if (!rows[0]) {
     const err = new Error('Sesión revocada o expirada');
@@ -318,23 +277,19 @@ async function validateAccessToken(token) {
   return payload;
 }
 
-/**
- * Limpia sesiones expiradas y registros de rate limit vencidos.
- * Llamar periódicamente (ej: desde server.js cada hora).
- */
 async function cleanExpiredSessions() {
-  const { rowCount: sessionsDeleted } = await query(
-    `DELETE FROM panel_sessions
-     WHERE expires_at < NOW()
-       OR (is_active = false AND revoked_at < NOW() - INTERVAL '7 days')`,
-    []
-  );
+  const db = getDb();
 
-  const { rowCount: rateLimitsDeleted } = await query(
-    `DELETE FROM panel_rate_limits
-     WHERE blocked_until IS NOT NULL AND blocked_until < NOW() - INTERVAL '1 hour'`,
-    []
-  );
+  const { rowCount: sessionsDeleted } = await db.execute(sql`
+    DELETE FROM panel_sessions
+    WHERE expires_at < NOW()
+       OR (is_active = false AND revoked_at < NOW() - INTERVAL '7 days')
+  `);
+
+  const { rowCount: rateLimitsDeleted } = await db.execute(sql`
+    DELETE FROM panel_rate_limits
+    WHERE blocked_until IS NOT NULL AND blocked_until < NOW() - INTERVAL '1 hour'
+  `);
 
   if (sessionsDeleted > 0 || rateLimitsDeleted > 0) {
     logger.info({ sessionsDeleted, rateLimitsDeleted }, '[Panel] Limpieza de sesiones expiradas');

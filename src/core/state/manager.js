@@ -1,3 +1,5 @@
+'use strict';
+
 /**
  * core/state/manager.js — Gestor de estado de conversaciones
  *
@@ -6,21 +8,21 @@
  *   L2 (PostgreSQL): UPSERT en cada saveState — durabilidad en cada mensaje
  *
  * Clave de aislamiento multitenant: `{tenantSlug}:{waFrom}`
- * Esto garantiza que el mismo número de teléfono no comparte estado
- * entre dos tenants distintos.
  *
  * En DEMO_MODE o NODE_ENV=test: solo L1, sin DB.
  */
 
-const { query }  = require('../../db');
-const { logger } = require('../../utils/logger');
+const { eq, and, sql } = require('drizzle-orm');
+const { getDb }        = require('../../drizzle/db');
+const { sessions: sessionsTable, tenants } = require('../../drizzle/schema');
+const { logger }       = require('../../utils/logger');
 
 /** @type {Map<string, object>} L1 cache */
 const sessions = new Map();
 
 /**
- * Promesas en vuelo para getState: evita que dos mensajes simultáneos del
- * mismo usuario disparen dos queries a DB cuando ambos tienen cache miss.
+ * Promesas en vuelo para getState: evita queries duplicadas ante mensajes
+ * simultáneos del mismo usuario con cache miss.
  * @type {Map<string, Promise<object>>}
  */
 const pending = new Map();
@@ -44,40 +46,34 @@ function _defaultSession(tenantSlug, waFrom) {
   };
 }
 
-// ── API pública ───────────────────────────────────────────────────────────
+// ── API pública ───────────────────────────────────────────────────────────────
 
-/**
- * Retorna el estado de la conversación. Si no existe, crea uno nuevo.
- * Primero busca en L1, luego en PostgreSQL.
- *
- * El mutex `pending` evita que dos mensajes simultáneos con cache miss
- * disparen queries duplicadas a DB para la misma sesión.
- *
- * @param {string} tenantSlug
- * @param {string} waFrom
- * @returns {Promise<object>}
- */
 async function getState(tenantSlug, waFrom) {
   const key = _key(tenantSlug, waFrom);
 
   if (sessions.has(key)) return sessions.get(key);
-
-  // Si hay un fetch en vuelo para esta misma clave, reusar la misma promesa
-  if (pending.has(key)) return pending.get(key);
+  if (pending.has(key))  return pending.get(key);
 
   if (!isDemo()) {
     const promise = (async () => {
       try {
-        const result = await query(
-          `SELECT step, data, shown_products, last_activity, reactivation_sent, created_at
-           FROM sessions
-           WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $1)
-             AND wa_from = $2`,
-          [tenantSlug, waFrom]
-        );
+        const db   = getDb();
+        const rows = await db
+          .select({
+            step:             sessionsTable.step,
+            data:             sessionsTable.data,
+            shown_products:   sessionsTable.shown_products,
+            last_activity:    sessionsTable.last_activity,
+            reactivation_sent: sessionsTable.reactivation_sent,
+            created_at:       sessionsTable.created_at,
+          })
+          .from(sessionsTable)
+          .innerJoin(tenants, eq(tenants.id, sessionsTable.tenant_id))
+          .where(and(eq(tenants.slug, tenantSlug), eq(sessionsTable.wa_from, waFrom)))
+          .limit(1);
 
-        if (result.rows[0]) {
-          const row     = result.rows[0];
+        if (rows[0]) {
+          const row     = rows[0];
           const session = {
             tenantSlug,
             waFrom,
@@ -111,15 +107,6 @@ async function getState(tenantSlug, waFrom) {
   return session;
 }
 
-/**
- * Persiste el estado en L1 y en PostgreSQL (await — no fire-and-forget).
- * Garantiza que si el proceso cae después de responder al usuario, el estado
- * ya está en DB antes de que saveState retorne.
- *
- * @param {string} tenantSlug
- * @param {string} waFrom
- * @param {object} session
- */
 async function saveState(tenantSlug, waFrom, session) {
   session.lastActivity     = Date.now();
   session.reactivationSent = false;
@@ -130,39 +117,31 @@ async function saveState(tenantSlug, waFrom, session) {
   if (isDemo()) return;
 
   try {
-    await query(
-      `INSERT INTO sessions
-         (tenant_id, wa_from, step, data, shown_products, last_activity, reactivation_sent)
-       VALUES (
-         (SELECT id FROM tenants WHERE slug = $1),
-         $2, $3, $4, $5, to_timestamp($6 / 1000.0), $7
-       )
-       ON CONFLICT (tenant_id, wa_from) DO UPDATE
-       SET step              = $3,
-           data              = $4,
-           shown_products    = $5,
-           last_activity     = to_timestamp($6 / 1000.0),
-           reactivation_sent = $7`,
-      [
-        tenantSlug,
-        waFrom,
-        session.step,
-        JSON.stringify(session.data),
-        JSON.stringify(session.shownProducts),
-        session.lastActivity,
-        session.reactivationSent,
-      ]
-    );
+    const db = getDb();
+    await db.execute(sql`
+      INSERT INTO sessions
+        (tenant_id, wa_from, step, data, shown_products, last_activity, reactivation_sent)
+      VALUES (
+        (SELECT id FROM tenants WHERE slug = ${tenantSlug}),
+        ${waFrom},
+        ${session.step},
+        ${JSON.stringify(session.data)}::jsonb,
+        ${JSON.stringify(session.shownProducts)}::jsonb,
+        to_timestamp(${session.lastActivity} / 1000.0),
+        ${session.reactivationSent}
+      )
+      ON CONFLICT (tenant_id, wa_from) DO UPDATE SET
+        step              = ${session.step},
+        data              = ${JSON.stringify(session.data)}::jsonb,
+        shown_products    = ${JSON.stringify(session.shownProducts)}::jsonb,
+        last_activity     = to_timestamp(${session.lastActivity} / 1000.0),
+        reactivation_sent = ${session.reactivationSent}
+    `);
   } catch (err) {
     logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error persistiendo sesión en DB');
   }
 }
 
-/**
- * Elimina el estado de una conversación.
- * @param {string} tenantSlug
- * @param {string} waFrom
- */
 async function clearState(tenantSlug, waFrom) {
   const key = _key(tenantSlug, waFrom);
   sessions.delete(key);
@@ -170,24 +149,17 @@ async function clearState(tenantSlug, waFrom) {
   if (isDemo()) return;
 
   try {
-    await query(
-      `DELETE FROM sessions
-       WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $1)
-         AND wa_from = $2`,
-      [tenantSlug, waFrom]
-    );
+    const db = getDb();
+    await db.execute(sql`
+      DELETE FROM sessions
+      WHERE tenant_id = (SELECT id FROM tenants WHERE slug = ${tenantSlug})
+        AND wa_from = ${waFrom}
+    `);
   } catch (err) {
     logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error eliminando sesión');
   }
 }
 
-/**
- * Retorna todas las sesiones del L1 (RAM) para un tenant dado.
- * Usado por el proceso de reactivación.
- *
- * @param {string} tenantSlug
- * @returns {object[]}
- */
 function getActiveSessions(tenantSlug) {
   const prefix = `${tenantSlug}:`;
   const result = [];
@@ -197,10 +169,7 @@ function getActiveSessions(tenantSlug) {
   return result;
 }
 
-/**
- * Limpia toda la memoria. Solo para uso en tests.
- * @internal
- */
+/** Solo para uso en tests. */
 function _resetForTest() {
   sessions.clear();
   pending.clear();

@@ -64,4 +64,16 @@ async function closePool() {
   }
 }
 
-module.exports = { query, healthCheck, getPool, closePool };
+/**
+ * Detecta errores de conectividad con la base de datos (no bugs de código).
+ * Usado para devolver 503 en lugar de 500 cuando el pool está caído.
+ */
+function isDbConnectionError(err) {
+  if (!err) return false;
+  const connCodes = ['ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENOTFOUND',
+                     '08006', '08001', '08004', '57P03', 'ECONNRESET'];
+  return connCodes.includes(err.code)
+    || /connect ECONNREFUSED|connection timeout|Connection terminated/i.test(err.message);
+}
+
+module.exports = { query, healthCheck, getPool, closePool, isDbConnectionError };

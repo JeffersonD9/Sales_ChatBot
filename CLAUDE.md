@@ -127,7 +127,7 @@ Comandos globales (`menu`, `hola`, `inicio`, `0`) resetean a MENU desde cualquie
 | `Dockerfile` | Multi-stage: `dev` (hot reload) + `runner` (producción) |
 | `docker-compose.yml` | Base: servicios compartidos (postgres + redis) |
 | `docker-compose.dev.yml` | Override dev: app con nodemon, puertos expuestos |
-| `docker-compose.prod.yml` | Override prod: app + nginx + certbot (pendiente) |
+| `docker-compose.prod.yml` | Override prod: app + nginx (envsubst template) + certbot |
 | `.dockerignore` | Excluye node_modules, .env, tests de la imagen |
 | `.env.dev.example` | Template para desarrollo (DEMO_MODE=true por defecto) |
 | `.env.example` | Template para producción |
@@ -257,13 +257,18 @@ node scripts/create-tenant.js \
 | Código base completo | ✅ |
 | Redis + caché por tenant | ✅ |
 | JWT auth + rate limiting | ✅ |
-| Tests unitarios configRepository (11 tests) | ✅ |
+| Tests (175 — unit + integration) | ✅ |
+| /metrics protegido por ADMIN_API_KEY | ✅ |
+| Redis con contraseña (REDIS_PASSWORD) | ✅ |
+| nginx con envsubst template (${DOMAIN}) | ✅ |
+| validateEnv — PANEL_JWT/REFRESH_SECRET validados al arranque | ✅ |
+| SQL injection fix en configRepository | ✅ |
+| drizzle/db.js null guard para pool | ✅ |
 | Entorno Docker dev | ✅ |
+| docker-compose.prod.yml | ✅ |
 | Base de datos en VPS | Pendiente |
 | Migrations corridas | Pendiente |
 | Redis en VPS | Pendiente |
-| docker-compose.prod.yml | Pendiente |
-| SSL / nginx | Pendiente |
-| Tests del flujo principal | Pendiente |
+| SSL / nginx (cert Certbot) | Pendiente |
 | cliente1 migrado a la nueva BD | Pendiente |
 | Deploy en VPS | Pendiente |

@@ -397,8 +397,9 @@
         <input id="t-phone-id" name="phone_number_id" placeholder="123456789">
       </div>
       <div class="form-row">
-        <label>Verify Token <span class="req">*</span></label>
-        <input id="t-verify-token" name="verify_token" required placeholder="mi_verify_token">
+        <label>Verify Token <span style="font-size:11px;color:var(--muted);font-weight:400">(generado automáticamente)</span></label>
+        <input id="t-verify-token" disabled placeholder="el sistema lo genera al crear" style="font-family:monospace;font-size:12px;opacity:.5;cursor:not-allowed">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Se muestra para copiar una vez creado el tenant</div>
       </div>
       <div class="modal-divider"></div>
       <div class="form-row">
@@ -422,6 +423,57 @@
         <button type="submit" class="btn btn-primary" id="btn-save-tenant">Crear tenant</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ── Modal: Meta Setup (post-creación) ── -->
+<div id="modal-meta-setup" class="modal-overlay hidden">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-title" style="color:var(--success)">Tenant creado ✓</div>
+    <div class="modal-sub">Copia estos datos para configurar el webhook en Meta Developer Portal</div>
+
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px;">URL del Webhook</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <code id="meta-webhook-url" style="flex:1;background:var(--surface-3);padding:8px 12px;border-radius:6px;font-size:13px;word-break:break-all;border:1px solid var(--border-2);color:var(--primary)"></code>
+          <button class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('meta-webhook-url',this)">Copiar</button>
+        </div>
+      </div>
+
+      <div>
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px;">Verify Token</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <code id="meta-verify-token" style="flex:1;background:var(--surface-3);padding:8px 12px;border-radius:6px;font-size:13px;word-break:break-all;border:1px solid var(--border-2)"></code>
+          <button class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('meta-verify-token',this)">Copiar</button>
+        </div>
+      </div>
+
+      <div id="meta-phone-id-row">
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px;">Phone Number ID</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <code id="meta-phone-id" style="flex:1;background:var(--surface-3);padding:8px 12px;border-radius:6px;font-size:13px;word-break:break-all;border:1px solid var(--border-2)"></code>
+          <button class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('meta-phone-id',this)">Copiar</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px;background:var(--surface-3);border-radius:8px;border-left:3px solid var(--warning);font-size:12px;color:var(--text-2);line-height:1.6;">
+      <strong style="color:var(--warning)">Próximo paso:</strong> Ve a
+      <strong>developers.facebook.com → Tu App → WhatsApp → Configuración</strong>,
+      pega la URL del webhook y el Verify Token, activa los eventos
+      <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;">messages</code> y
+      <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;">message_deliveries</code>.
+      Luego ve a <strong>Configuración básica</strong> y copia el
+      <em>App Secret</em> como <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;">META_APP_SECRET</code> en tu <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;">.env</code>.
+      <br><br>
+      Para instrucciones detalladas revisa
+      <strong>docs/META_SETUP_GUIDE.md</strong> en el repositorio.
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" onclick="document.getElementById('modal-meta-setup').classList.add('hidden')">Entendido</button>
+    </div>
   </div>
 </div>
 
@@ -463,8 +515,12 @@
         <input id="et-phone-id" placeholder="123456789">
       </div>
       <div class="form-row">
-        <label>Nuevo Verify Token (dejar vacío para no cambiar)</label>
-        <input id="et-verify-token" placeholder="mi_verify_token">
+        <label>Verify Token <span style="font-size:11px;color:var(--muted);font-weight:400">(solo lectura)</span></label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="et-verify-token" disabled style="flex:1;font-family:monospace;font-size:12px;opacity:.7;cursor:default">
+          <button type="button" class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('et-verify-token-display',this)">Copiar</button>
+        </div>
+        <span id="et-verify-token-display" style="display:none"></span>
       </div>
       <div class="modal-divider"></div>
       <div class="form-row" style="display:flex;align-items:center;gap:10px">
@@ -737,6 +793,16 @@ function toast(msg, type = '') {
   el._t = setTimeout(() => { el.className = ''; }, 3500);
 }
 
+function copyField(elementId, btn) {
+  const el   = document.getElementById(elementId);
+  const text = el.value !== undefined ? el.value : el.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copiado!';
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  });
+}
+
 function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -928,7 +994,6 @@ document.getElementById('form-tenant').addEventListener('submit', async (e) => {
       name:            document.getElementById('t-name').value.trim(),
       wa_token:        document.getElementById('t-wa-token').value || undefined,
       phone_number_id: document.getElementById('t-phone-id').value || undefined,
-      verify_token:    document.getElementById('t-verify-token').value,
       owner_phone:     document.getElementById('t-owner-phone').value,
       owner_email:     document.getElementById('t-owner-email').value || undefined,
       plan:            document.getElementById('t-plan').value,
@@ -940,7 +1005,23 @@ document.getElementById('form-tenant').addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(data.error);
 
     document.getElementById('modal-tenant').classList.add('hidden');
-    toast(`Tenant "${data.tenant.name}" creado → ${data.tenant.slug}`, 'ok');
+
+    // Mostrar datos de configuración Meta
+    if (data.meta_setup) {
+      document.getElementById('meta-webhook-url').textContent  = data.meta_setup.webhook_url;
+      document.getElementById('meta-verify-token').textContent = data.meta_setup.verify_token || '(no ingresado)';
+      const phoneIdRow = document.getElementById('meta-phone-id-row');
+      if (data.meta_setup.phone_number_id) {
+        document.getElementById('meta-phone-id').textContent = data.meta_setup.phone_number_id;
+        phoneIdRow.style.display = 'block';
+      } else {
+        phoneIdRow.style.display = 'none';
+      }
+      document.getElementById('modal-meta-setup').classList.remove('hidden');
+    } else {
+      toast(`Tenant "${data.tenant.name}" creado → ${data.tenant.slug}`, 'ok');
+    }
+
     await Promise.all([loadTenants(), loadDashboard()]);
   } catch (err) {
     if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
@@ -1237,7 +1318,8 @@ function openEditTenantModal(t) {
   document.getElementById('et-owner-email').value   = t.owner_email || '';
   document.getElementById('et-wa-token').value      = '';
   document.getElementById('et-phone-id').value      = '';
-  document.getElementById('et-verify-token').value  = '';
+  document.getElementById('et-verify-token').value  = t.verify_token || '';
+  document.getElementById('et-verify-token-display').textContent = t.verify_token || '';
   document.getElementById('et-meta-live').checked   = !!t.meta_live;
   document.getElementById('modal-edit-tenant').classList.remove('hidden');
 }
@@ -1265,8 +1347,6 @@ document.getElementById('form-edit-tenant').addEventListener('submit', async (e)
     if (waToken) body.wa_token = waToken;
     const phoneId = document.getElementById('et-phone-id').value.trim();
     if (phoneId) body.phone_number_id = phoneId;
-    const verifyToken = document.getElementById('et-verify-token').value.trim();
-    if (verifyToken) body.verify_token = verifyToken;
 
     const res  = await apiFetch(`/panel/admin/tenants/${slug}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

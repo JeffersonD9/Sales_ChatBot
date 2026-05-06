@@ -1,7 +1,11 @@
 'use strict';
 
 // CRUD de tenant_whatsapp_config con caché Redis (TTL 5 min)
-const { getPool }           = require('../db');
+// Las operaciones con pgp_sym_encrypt/decrypt usan sql`` raw de Drizzle —
+// no existe helper ORM para funciones pgcrypto.
+const { sql, eq }           = require('drizzle-orm');
+const { getDb }             = require('../drizzle/db');
+const { tenantWhatsappConfig } = require('../drizzle/schema');
 const { getRedis }          = require('../redis');
 const { validateBotConfig } = require('../utils/botConfigSchema');
 const { logger }            = require('../utils/logger');
@@ -46,29 +50,25 @@ async function bustCache(tenantId) {
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 async function fromDB(tenantId) {
-  const client = await getPool().connect();
+  const db = getDb();
   try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
-    const { rows } = await client.query(
-      `SELECT
-         tenant_id,
-         pgp_sym_decrypt(session_data, $2)   AS session_data,
-         bot_config,
-         pgp_sym_decrypt(webhook_secret, $2) AS webhook_secret,
-         is_active, created_at, updated_at
-       FROM tenant_whatsapp_config
-       WHERE tenant_id = $1`,
-      [tenantId, process.env.APP_SECRET]
-    );
-    await client.query('COMMIT');
-    return rows[0] || null;
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL app.current_tenant_id = ${tenantId}`);
+      return tx.execute(sql`
+        SELECT
+          tenant_id,
+          pgp_sym_decrypt(session_data, ${process.env.APP_SECRET})   AS session_data,
+          bot_config,
+          pgp_sym_decrypt(webhook_secret, ${process.env.APP_SECRET}) AS webhook_secret,
+          is_active, created_at, updated_at
+        FROM tenant_whatsapp_config
+        WHERE tenant_id = ${tenantId}::uuid
+      `);
+    });
+    return rows.rows[0] || null;
   } catch (err) {
-    await client.query('ROLLBACK');
     logger.error({ tenantId, err: err.message }, '[ConfigRepo] Error leyendo DB');
     throw err;
-  } finally {
-    client.release();
   }
 }
 
@@ -84,71 +84,61 @@ async function getConfig(tenantId) {
 }
 
 async function saveConfig(tenantId, { session_data, bot_config, webhook_secret, is_active }) {
+  const db = getDb();
   const validatedBotConfig = bot_config !== undefined ? validateBotConfig(bot_config) : undefined;
+  const secret = process.env.APP_SECRET;
 
-  const client = await getPool().connect();
   try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
-    const { rows } = await client.query(
-      `INSERT INTO tenant_whatsapp_config
-         (tenant_id, session_data, bot_config, webhook_secret, is_active)
-       VALUES (
-         $1,
-         CASE WHEN $2::TEXT IS NOT NULL THEN pgp_sym_encrypt($2, $5) ELSE NULL END,
-         COALESCE($3::jsonb, '{}'),
-         CASE WHEN $4::TEXT IS NOT NULL THEN pgp_sym_encrypt($4, $5) ELSE NULL END,
-         COALESCE($6, true)
-       )
-       ON CONFLICT (tenant_id) DO UPDATE SET
-         session_data   = CASE WHEN $2::TEXT IS NOT NULL THEN pgp_sym_encrypt($2, $5)
-                               ELSE tenant_whatsapp_config.session_data END,
-         bot_config     = COALESCE($3::jsonb, tenant_whatsapp_config.bot_config),
-         webhook_secret = CASE WHEN $4::TEXT IS NOT NULL THEN pgp_sym_encrypt($4, $5)
-                               ELSE tenant_whatsapp_config.webhook_secret END,
-         is_active      = COALESCE($6, tenant_whatsapp_config.is_active)
-       RETURNING tenant_id, bot_config, is_active, created_at, updated_at`,
-      [
-        tenantId,
-        session_data   ?? null,
-        validatedBotConfig ? JSON.stringify(validatedBotConfig) : null,
-        webhook_secret ?? null,
-        process.env.APP_SECRET,
-        is_active      ?? null,
-      ]
-    );
-    await client.query('COMMIT');
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL app.current_tenant_id = ${tenantId}`);
+      return tx.execute(sql`
+        INSERT INTO tenant_whatsapp_config
+          (tenant_id, session_data, bot_config, webhook_secret, is_active)
+        VALUES (
+          ${tenantId}::uuid,
+          ${session_data != null ? sql`pgp_sym_encrypt(${session_data}, ${secret})` : sql`NULL`},
+          ${validatedBotConfig ? JSON.stringify(validatedBotConfig) : '{}'}::jsonb,
+          ${webhook_secret != null ? sql`pgp_sym_encrypt(${webhook_secret}, ${secret})` : sql`NULL`},
+          ${is_active ?? true}
+        )
+        ON CONFLICT (tenant_id) DO UPDATE SET
+          session_data   = ${session_data != null
+            ? sql`pgp_sym_encrypt(${session_data}, ${secret})`
+            : sql`tenant_whatsapp_config.session_data`},
+          bot_config     = ${validatedBotConfig
+            ? sql`${JSON.stringify(validatedBotConfig)}::jsonb`
+            : sql`tenant_whatsapp_config.bot_config`},
+          webhook_secret = ${webhook_secret != null
+            ? sql`pgp_sym_encrypt(${webhook_secret}, ${secret})`
+            : sql`tenant_whatsapp_config.webhook_secret`},
+          is_active      = ${is_active ?? sql`tenant_whatsapp_config.is_active`}
+        RETURNING tenant_id, bot_config, is_active, created_at, updated_at
+      `);
+    });
     await bustCache(tenantId);
     logger.info({ tenantId }, '[ConfigRepo] Config guardada');
-    return rows[0];
+    return rows.rows[0];
   } catch (err) {
-    await client.query('ROLLBACK');
     logger.error({ tenantId, err: err.message }, '[ConfigRepo] Error guardando en DB');
     throw err;
-  } finally {
-    client.release();
   }
 }
 
 async function deleteConfig(tenantId) {
-  const client = await getPool().connect();
+  const db = getDb();
   try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
-    const { rowCount } = await client.query(
-      'DELETE FROM tenant_whatsapp_config WHERE tenant_id = $1',
-      [tenantId]
-    );
-    await client.query('COMMIT');
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL app.current_tenant_id = ${tenantId}`);
+      return tx.delete(tenantWhatsappConfig)
+        .where(eq(tenantWhatsappConfig.tenant_id, tenantId));
+    });
     await bustCache(tenantId);
-    logger.info({ tenantId, deleted: rowCount > 0 }, '[ConfigRepo] Config eliminada');
-    return rowCount > 0;
+    const deleted = result.rowCount > 0;
+    logger.info({ tenantId, deleted }, '[ConfigRepo] Config eliminada');
+    return deleted;
   } catch (err) {
-    await client.query('ROLLBACK');
     logger.error({ tenantId, err: err.message }, '[ConfigRepo] Error eliminando de DB');
     throw err;
-  } finally {
-    client.release();
   }
 }
 

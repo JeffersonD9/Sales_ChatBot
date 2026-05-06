@@ -1,29 +1,22 @@
+'use strict';
+
 /**
  * tests/unit/tenants/configRepository.test.js
  *
  * Tests unitarios de src/tenants/configRepository.js
  *
  * Mocks:
- *   · src/db.js    → pool con client simulado
- *   · src/redis.js → cliente Redis simulado
+ *   · src/drizzle/db → mock Drizzle con cola de resultados
+ *   · src/redis.js   → cliente Redis simulado
  */
 
-'use strict';
+// ── Mock del cliente Drizzle ──────────────────────────────────────────────────
 
-// ── Mocks ─────────────────────────────────────────────────────────────────────
+const { createMockDb } = require('../../helpers/mockDb');
+const mockDb = createMockDb();
 
-const mockClient = {
-  query:   jest.fn(),
-  release: jest.fn(),
-};
-
-const mockPool = {
-  connect: jest.fn().mockResolvedValue(mockClient),
-};
-
-jest.mock('../../../src/db', () => ({
-  getPool: jest.fn(() => mockPool),
-}));
+jest.mock('../../../src/drizzle/db', () => ({ getDb: () => mockDb }));
+jest.mock('../../../src/db', () => ({ getPool: jest.fn() }));
 
 const mockRedis = {
   get:    jest.fn(),
@@ -71,54 +64,54 @@ const dbRow = {
   updated_at:     new Date(),
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers de encolado ───────────────────────────────────────────────────────
 
-function setupDbRead(rows = [dbRow]) {
-  mockClient.query
-    .mockResolvedValueOnce({})           // BEGIN
-    .mockResolvedValueOnce({})           // SET LOCAL
-    .mockResolvedValueOnce({ rows })     // SELECT
-    .mockResolvedValueOnce({});          // COMMIT
+// fromDB: tx.execute(SET LOCAL) + tx.execute(SELECT)
+function enqueueDbRead(rows = [dbRow]) {
+  mockDb
+    ._enqueue({})                      // SET LOCAL execute
+    ._enqueue({ rows, rowCount: rows.length }); // SELECT execute
 }
 
-function setupDbSave(row = dbRow) {
-  mockClient.query
-    .mockResolvedValueOnce({})                       // BEGIN
-    .mockResolvedValueOnce({})                       // SET LOCAL
-    .mockResolvedValueOnce({ rows: [row], rowCount: 1 }) // UPSERT RETURNING
-    .mockResolvedValueOnce({});                      // COMMIT
+// saveConfig: tx.execute(SET LOCAL) + tx.execute(UPSERT RETURNING)
+function enqueueDbSave(row = dbRow) {
+  mockDb
+    ._enqueue({})                                   // SET LOCAL execute
+    ._enqueue({ rows: [row], rowCount: 1 });         // UPSERT execute
 }
 
-function setupDbDelete(rowCount = 1) {
-  mockClient.query
-    .mockResolvedValueOnce({})           // BEGIN
-    .mockResolvedValueOnce({})           // SET LOCAL
-    .mockResolvedValueOnce({ rowCount }) // DELETE
-    .mockResolvedValueOnce({});          // COMMIT
+// deleteConfig: tx.execute(SET LOCAL) + tx.delete().where() (thenable)
+function enqueueDbDelete(rowCount = 1) {
+  mockDb
+    ._enqueue({})           // SET LOCAL execute
+    ._enqueue({ rowCount }); // delete chain (dequeued via thenable)
 }
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockDb._clearQueue();
+});
 
 // ── getConfig ─────────────────────────────────────────────────────────────────
 
 describe('configRepository.getConfig', () => {
-  beforeEach(() => jest.clearAllMocks());
-
   test('retorna config desde Redis cuando hay cache hit', async () => {
     mockRedis.get.mockResolvedValue(JSON.stringify(dbRow));
 
     const result = await repo.getConfig(TENANT_ID);
 
     expect(mockRedis.get).toHaveBeenCalledWith(`wa:config:${TENANT_ID}`);
-    expect(mockPool.connect).not.toHaveBeenCalled();
+    expect(mockDb.execute).not.toHaveBeenCalled();
     expect(result).toMatchObject({ tenant_id: TENANT_ID });
   });
 
   test('consulta DB en cache miss y guarda en Redis', async () => {
     mockRedis.get.mockResolvedValue(null);
-    setupDbRead();
+    enqueueDbRead();
 
     const result = await repo.getConfig(TENANT_ID);
 
-    expect(mockPool.connect).toHaveBeenCalled();
+    expect(mockDb.execute).toHaveBeenCalled();
     expect(mockRedis.set).toHaveBeenCalledWith(
       `wa:config:${TENANT_ID}`, expect.any(String), 'EX', 300
     );
@@ -127,7 +120,7 @@ describe('configRepository.getConfig', () => {
 
   test('degrada a solo DB cuando Redis.get lanza error', async () => {
     mockRedis.get.mockRejectedValue(new Error('Redis down'));
-    setupDbRead();
+    enqueueDbRead();
 
     const result = await repo.getConfig(TENANT_ID);
 
@@ -136,7 +129,7 @@ describe('configRepository.getConfig', () => {
 
   test('retorna null cuando el tenant no existe en DB', async () => {
     mockRedis.get.mockResolvedValue(null);
-    setupDbRead([]);
+    enqueueDbRead([]);
 
     const result = await repo.getConfig(TENANT_ID);
 
@@ -148,36 +141,34 @@ describe('configRepository.getConfig', () => {
 // ── saveConfig ────────────────────────────────────────────────────────────────
 
 describe('configRepository.saveConfig', () => {
-  beforeEach(() => jest.clearAllMocks());
-
   test('guarda en DB e invalida cache Redis', async () => {
     mockRedis.del.mockResolvedValue(1);
-    setupDbSave();
+    enqueueDbSave();
 
     const result = await repo.saveConfig(TENANT_ID, { bot_config: validBotConfig });
 
-    expect(mockPool.connect).toHaveBeenCalled();
+    expect(mockDb.execute).toHaveBeenCalled();
     expect(mockRedis.del).toHaveBeenCalledWith(`wa:config:${TENANT_ID}`);
     expect(result).toMatchObject({ tenant_id: TENANT_ID });
   });
 
   test('lanza error descriptivo cuando bot_config es inválido (Zod)', async () => {
     const invalid = {
-      greeting: '',                          // vacío → inválido
+      greeting: '',
       keyword_tree: {},
-      escalation: { trigger_keywords: [], message: 'ok', notify_owner: true }, // array vacío
+      escalation: { trigger_keywords: [], message: 'ok', notify_owner: true },
     };
 
     await expect(repo.saveConfig(TENANT_ID, { bot_config: invalid }))
       .rejects.toThrow('bot_config inválido');
 
-    expect(mockPool.connect).not.toHaveBeenCalled();
+    expect(mockDb.execute).not.toHaveBeenCalled();
     expect(mockRedis.del).not.toHaveBeenCalled();
   });
 
   test('invalida cache aunque Redis.del falle (degraded gracefully)', async () => {
     mockRedis.del.mockRejectedValue(new Error('Redis down'));
-    setupDbSave();
+    enqueueDbSave();
 
     await expect(repo.saveConfig(TENANT_ID, { bot_config: validBotConfig }))
       .resolves.toBeDefined();
@@ -187,11 +178,9 @@ describe('configRepository.saveConfig', () => {
 // ── deleteConfig ──────────────────────────────────────────────────────────────
 
 describe('configRepository.deleteConfig', () => {
-  beforeEach(() => jest.clearAllMocks());
-
   test('elimina de DB y Redis, retorna true cuando existía', async () => {
     mockRedis.del.mockResolvedValue(1);
-    setupDbDelete(1);
+    enqueueDbDelete(1);
 
     const result = await repo.deleteConfig(TENANT_ID);
 
@@ -201,14 +190,14 @@ describe('configRepository.deleteConfig', () => {
 
   test('retorna false cuando la fila no existía en DB', async () => {
     mockRedis.del.mockResolvedValue(0);
-    setupDbDelete(0);
+    enqueueDbDelete(0);
 
     expect(await repo.deleteConfig(TENANT_ID)).toBe(false);
   });
 
   test('siempre invalida cache aunque no haya fila en DB', async () => {
     mockRedis.del.mockResolvedValue(0);
-    setupDbDelete(0);
+    enqueueDbDelete(0);
 
     await repo.deleteConfig(TENANT_ID);
 

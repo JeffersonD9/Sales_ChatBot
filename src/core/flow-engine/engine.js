@@ -29,6 +29,11 @@ const {
   handleCheckOrder,
 } = require('./steps/order');
 const { handleWithAI }              = require('../ai/aiHandler');
+const { transcribe, FALLBACK_MSG: AUDIO_FALLBACK } = require('../ai/audioTranscriber');
+const { analyze,    FALLBACK_MSG: IMAGE_FALLBACK } = require('../ai/imageAnalyzer');
+const { check: checkEscalation }    = require('../ai/escalationDetector');
+
+const PREMIUM_PLANS = new Set(['premium', 'enterprise']);
 
 const GLOBAL_RESET_CMDS = new Set(['menu', 'menú', 'inicio', 'hola', 'hi', 'start', '0']);
 
@@ -42,7 +47,43 @@ const GLOBAL_RESET_CMDS = new Set(['menu', 'menú', 'inicio', 'hola', 'hi', 'sta
  * @param {object} notifier   - Módulo de notificaciones al dueño
  */
 async function processMessage(phone, rawMsg, session, tenant, notifier) {
-  const { type, text, interactiveId } = extractInput(rawMsg);
+  const parsed  = extractInput(rawMsg);
+  let { type, text, interactiveId } = parsed;
+  const isPremium = PREMIUM_PLANS.has(tenant.plan);
+
+  // ── Audio: transcribir con Whisper y continuar como texto ──────────────────
+  if (type === 'audio') {
+    if (!isPremium) {
+      await sendText(phone, '📱 Solo proceso mensajes de texto y botones. Usa el menú principal:', tenant);
+      await sendMainMenu(phone, session, tenant);
+      return;
+    }
+    const transcript = await transcribe(tenant, parsed.mediaId);
+    if (!transcript) {
+      await sendText(phone, AUDIO_FALLBACK, tenant);
+      return;
+    }
+    type = 'text';
+    text = transcript;
+  }
+
+  // ── Imagen: analizar con Claude Vision y derivar al AI handler ─────────────
+  if (type === 'image') {
+    if (!isPremium) {
+      await sendText(phone, '📱 Solo proceso mensajes de texto y botones. Usa el menú principal:', tenant);
+      await sendMainMenu(phone, session, tenant);
+      return;
+    }
+    const description = await analyze(tenant, parsed.mediaId, parsed.mimeType);
+    if (!description) {
+      await sendText(phone, IMAGE_FALLBACK, tenant);
+      return;
+    }
+    const aiText  = `[El cliente envió una foto de un producto similar:] ${description}`;
+    const aiReply = await handleWithAI(phone, aiText, session, tenant);
+    await sendText(phone, aiReply || IMAGE_FALLBACK, tenant);
+    return;
+  }
 
   if (type === 'unsupported') {
     await sendText(phone, '📱 Solo proceso mensajes de texto y botones. Usa el menú principal:', tenant);
@@ -68,6 +109,10 @@ async function processMessage(phone, rawMsg, session, tenant, notifier) {
         const aiReply = await handleWithAI(phone, text, session, tenant);
         if (aiReply) {
           await sendText(phone, aiReply, tenant);
+          if (isPremium) {
+            const escalationMsg = await checkEscalation(tenant, session, phone, text);
+            if (escalationMsg) await sendText(phone, escalationMsg, tenant);
+          }
         } else {
           await sendText(phone, '🤔 No entendí esa opción. Usa el menú:', tenant);
           await sendMainMenu(phone, session, tenant);
@@ -91,6 +136,10 @@ async function processMessage(phone, rawMsg, session, tenant, notifier) {
         const aiReply = await handleWithAI(phone, text, session, tenant);
         if (aiReply) {
           await sendText(phone, aiReply, tenant);
+          if (isPremium) {
+            const escalationMsg = await checkEscalation(tenant, session, phone, text);
+            if (escalationMsg) await sendText(phone, escalationMsg, tenant);
+          }
         } else {
           await sendText(phone, '¿Qué decides? Usa los botones o escribe *sí*, *duda* o *no*.', tenant);
         }

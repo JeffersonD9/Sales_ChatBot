@@ -39,10 +39,10 @@ function _getClient() {
  * Contrato de fallo: retorna null en cualquier error (API caída, timeout,
  * clave ausente, AI_ENABLED=false). El caller es responsable del fallback.
  *
- * @param {string} phone    - Número del remitente (solo para logging)
+ * @param {string} phone    - Número del remitente
  * @param {string} text     - Mensaje del usuario
  * @param {object} session  - Estado mutable de la conversación
- * @param {object} tenant   - Config del tenant (products, bot_config, slug)
+ * @param {object} tenant   - Config del tenant (products, bot_config, slug, plan)
  * @returns {Promise<string|null>}
  */
 async function handleWithAI(phone, text, session, tenant) {

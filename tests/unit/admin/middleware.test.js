@@ -1,16 +1,18 @@
 'use strict';
 
+// Mock Redis → null para que progressiveBackoff use el fallback en memoria
+jest.mock('../../../src/redis', () => ({ getRedis: () => null }));
+
 jest.mock('../../../src/utils/logger', () => ({
   logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
-const { requireApiKey } = require('../../../src/admin/middleware');
-
 function makeReqRes(apiKey, ip = '127.0.0.1') {
   const req = {
-    headers: { 'x-api-key': apiKey },
+    headers:  { 'x-api-key': apiKey, 'user-agent': 'test' },
     ip,
-    path: '/admin/tenants',
+    path:     '/admin/tenants',
+    socket:   { remoteAddress: ip },
   };
   const res = {
     status: jest.fn().mockReturnThis(),
@@ -22,105 +24,100 @@ function makeReqRes(apiKey, ip = '127.0.0.1') {
 
 beforeEach(() => {
   process.env.ADMIN_API_KEY = 'supersecretkey';
-  // Reset the attempts Map between tests by re-requiring the module
   jest.resetModules();
+  // Re-aplicar mocks después de resetModules
+  jest.mock('../../../src/redis', () => ({ getRedis: () => null }));
   jest.mock('../../../src/utils/logger', () => ({
     logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() },
   }));
 });
 
 describe('requireApiKey', () => {
-  test('allows request with correct API key', () => {
+  test('allows request with correct API key', async () => {
     const { requireApiKey: mw } = require('../../../src/admin/middleware');
     const { req, res, next } = makeReqRes('supersecretkey');
-    mw(req, res, next);
+    await mw(req, res, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  test('rejects request with wrong API key — 401', () => {
+  test('rejects request with wrong API key — 401', async () => {
     const { requireApiKey: mw } = require('../../../src/admin/middleware');
     const { req, res, next } = makeReqRes('wrongkey');
-    mw(req, res, next);
+    await mw(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.any(String) }));
   });
 
-  test('rejects request with no API key — 401', () => {
+  test('rejects request with no API key — 401', async () => {
     const { requireApiKey: mw } = require('../../../src/admin/middleware');
     const { req, res, next } = makeReqRes(undefined);
-    mw(req, res, next);
+    await mw(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
-  test('rejects request with empty API key — 401', () => {
+  test('rejects request with empty API key — 401', async () => {
     const { requireApiKey: mw } = require('../../../src/admin/middleware');
     const { req, res, next } = makeReqRes('');
-    mw(req, res, next);
+    await mw(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
-  test('uses timing-safe comparison — different length key still rejected', () => {
+  test('uses timing-safe comparison — prefix of real key is still rejected', async () => {
     const { requireApiKey: mw } = require('../../../src/admin/middleware');
-    // A key that is a prefix of the real key — would fool naive === check
-    const { req, res, next } = makeReqRes('supersecret');
-    mw(req, res, next);
+    const { req, res, next } = makeReqRes('supersecret'); // prefix, not the full key
+    await mw(req, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
-  test('rate limits after 20 requests from same IP — 429', () => {
-    const { requireApiKey: mw } = require('../../../src/admin/middleware');
-    // Freeze time so all attempts fall in the same minute window
-    const fixedNow = Date.now();
-    jest.spyOn(Date, 'now').mockReturnValue(fixedNow);
+  test('blocks after maxAttempts failed requests from same IP — 429', async () => {
+    const { requireApiKey: mw, adminMiddleware } = require('../../../src/admin/middleware');
 
-    // First 20 requests: all go through (wrong key → 401, not 429)
-    for (let i = 0; i < 20; i++) {
+    const MAX = 5; // progressiveBackoff maxAttempts default
+
+    // Primeros MAX intentos: rechazados con 401 pero no bloqueados aún
+    for (let i = 0; i < MAX; i++) {
       const { req, res, next } = makeReqRes('wrongkey', '10.0.0.1');
-      mw(req, res, next);
+      await mw(req, res, next);
       expect(res.status).toHaveBeenCalledWith(401);
     }
 
-    // 21st request from same IP → 429
+    // El backoff.middleware() debería bloquear con 429 en la siguiente petición
+    const backoffMw = adminMiddleware[2]; // [whitelist, headers, backoff.middleware(), requireApiKey]
     const { req, res, next } = makeReqRes('wrongkey', '10.0.0.1');
-    mw(req, res, next);
+    await backoffMw(req, res, next);
     expect(res.status).toHaveBeenCalledWith(429);
     expect(next).not.toHaveBeenCalled();
-
-    jest.spyOn(Date, 'now').mockRestore();
   });
 
-  test('rate limit is per-IP — different IPs are not affected', () => {
-    const { requireApiKey: mw } = require('../../../src/admin/middleware');
-    const fixedNow = Date.now();
-    jest.spyOn(Date, 'now').mockReturnValue(fixedNow);
+  test('block is per-IP — different IP passes after another IP is blocked', async () => {
+    const { requireApiKey: mw, adminMiddleware } = require('../../../src/admin/middleware');
 
-    // Exhaust rate limit for IP A
-    for (let i = 0; i < 21; i++) {
-      const { req, res } = makeReqRes('wrongkey', '10.0.0.2');
-      mw(req, res, jest.fn());
+    // Agotar intentos para IP A
+    for (let i = 0; i < 5; i++) {
+      const { req, res } = makeReqRes('wrongkey', '10.0.0.10');
+      await mw(req, res, jest.fn());
     }
 
-    // IP B (with correct key) should still pass
-    const { req, res, next } = makeReqRes('supersecretkey', '10.0.0.3');
-    mw(req, res, next);
+    // IP B con key correcta debe pasar sin problema
+    const backoffMw = adminMiddleware[2];
+    const { req, res, next } = makeReqRes('supersecretkey', '10.0.0.11');
+    await backoffMw(req, res, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
-
-    jest.spyOn(Date, 'now').mockRestore();
   });
 
-  test('accepts request when ADMIN_API_KEY env var is not set — rejects (empty vs empty)', () => {
+  test('rejects empty key even when ADMIN_API_KEY is not set', async () => {
     delete process.env.ADMIN_API_KEY;
     const { requireApiKey: mw } = require('../../../src/admin/middleware');
-    // empty key vs empty expected: Buffer lengths match, timingSafeEqual → valid
     const { req, res, next } = makeReqRes('');
-    mw(req, res, next);
-    // Both are empty — length matches and bytes match → passes
-    expect(next).toHaveBeenCalledTimes(1);
+    await mw(req, res, next);
+    // keyBuf.length === 0 → explícitamente rechazado
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
   });
 });
