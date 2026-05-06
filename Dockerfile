@@ -23,9 +23,12 @@ FROM base AS dev
 
 RUN npm ci
 
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
 # El código se monta como volumen en docker-compose.dev.yml
-# (no se copia aquí para que los cambios locales se reflejen en vivo)
 EXPOSE 3000
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["npm", "run", "dev"]
 
 # ── Stage deps: solo dependencias de producción ───────────────────────────────
@@ -45,7 +48,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN chown -R botuser:botgroup /app
+RUN chmod +x entrypoint.sh && chown -R botuser:botgroup /app
 
 USER botuser
 
@@ -54,4 +57,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
 
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["node", "src/server.js"]

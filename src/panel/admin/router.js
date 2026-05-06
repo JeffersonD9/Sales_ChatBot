@@ -136,15 +136,18 @@ router.get('/tenants', async (req, res, next) => {
 
 router.post('/tenants', async (req, res) => {
   try {
-    const { name, wa_token, phone_number_id, owner_phone, owner_email, plan } = req.body || {};
+    const { name, wa_token, phone_number_id, verify_token, owner_phone, owner_email, plan } = req.body || {};
 
     if (!name || !owner_phone) {
       return res.status(400).json({ ok: false, error: 'name y owner_phone son requeridos' });
     }
+    if (verify_token && (typeof verify_token !== 'string' || verify_token.length < 8 || verify_token.length > 128)) {
+      return res.status(400).json({ ok: false, error: 'verify_token debe tener entre 8 y 128 caracteres' });
+    }
 
     const baseSlug       = generateSlug(name);
     const slug           = await _resolveSlugConflict(baseSlug);
-    const finalVerifyToken   = await repo.generateUniqueVerifyToken(slug);
+    const finalVerifyToken   = verify_token || (await repo.generateUniqueVerifyToken(slug));
     const wa_token_encrypted = wa_token ? encrypt(wa_token) : null;
 
     const tenant = await repo.create({
@@ -314,6 +317,74 @@ router.put('/tenants/:slug/products/:id', async (req, res) => {
     res.json({ ok: true, product: rows[0] });
   } catch (err) {
     logger.error({ err: err.message }, '[Panel] Error actualizando producto');
+    res.status(500).json({ ok: false, error: 'Error interno' });
+  }
+});
+
+router.post('/tenants/:slug/products/bulk', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { products } = req.body || {};
+
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No se enviaron productos válidos' });
+    }
+
+    const tenantRow = await query('SELECT id FROM tenants WHERE slug = $1', [slug]);
+    if (!tenantRow.rows[0]) {
+      return res.status(404).json({ ok: false, error: 'Tenant no encontrado' });
+    }
+    const tenantId = tenantRow.rows[0].id;
+
+    // Cargar nombres existentes para deduplicación (case-insensitive)
+    const { rows: existing } = await query(
+      'SELECT LOWER(name) AS name FROM products WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const existingNames = new Set(existing.map((r) => r.name));
+
+    const inserted = [];
+    const skipped  = [];
+    const errors   = [];
+
+    for (const p of products) {
+      if (!p.name || p.price === undefined) {
+        errors.push({ name: p.name || '(sin nombre)', emoji: p.emoji || '🛍️', price: p.price, category: p.category, reason: 'Faltan nombre o precio' });
+        continue;
+      }
+
+      if (existingNames.has(p.name.toLowerCase())) {
+        skipped.push({ name: p.name, emoji: p.emoji || '🛍️', price: p.price, category: p.category || '', reason: 'Ya existe un producto con ese nombre' });
+        continue;
+      }
+
+      try {
+        const { rows: [product] } = await query(
+          `INSERT INTO products (tenant_id, name, description, price, sizes, image_url, emoji, category)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, price, emoji, category`,
+          [
+            tenantId,
+            p.name,
+            p.description || '',
+            parseInt(p.price, 10),
+            p.sizes || [],
+            p.image_url || '',
+            p.emoji || '🛍️',
+            p.category || '',
+          ]
+        );
+        existingNames.add(p.name.toLowerCase());
+        inserted.push(product);
+      } catch (insertErr) {
+        logger.error({ err: insertErr.message, product: p.name }, '[Panel] Error insertando producto en bulk');
+        errors.push({ name: p.name, emoji: p.emoji || '🛍️', price: p.price, category: p.category || '', reason: 'Error al guardar en base de datos' });
+      }
+    }
+
+    logger.info({ slug, inserted: inserted.length, skipped: skipped.length, errors: errors.length }, '[Panel] Bulk import completado');
+    res.json({ ok: true, inserted, skipped, errors });
+  } catch (err) {
+    logger.error({ err: err.message }, '[Panel] Error en bulk import');
     res.status(500).json({ ok: false, error: 'Error interno' });
   }
 });

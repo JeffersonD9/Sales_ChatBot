@@ -216,18 +216,25 @@
     }
     .form-row label .req { color: var(--danger); }
     .form-row input,
-    .form-row select {
+    .form-row select,
+    .form-row textarea {
       width: 100%;
       background: var(--surface-2); border: 1px solid var(--border);
       border-radius: 8px; padding: 9px 12px;
       font-size: 14px; color: var(--text); outline: none;
       transition: border-color .15s, box-shadow .15s;
+      font-family: inherit;
     }
-    .form-row input::placeholder { color: var(--muted); opacity: .5; }
+    .form-row input::placeholder,
+    .form-row textarea::placeholder { color: var(--muted); opacity: .6; }
     .form-row input:focus,
-    .form-row select:focus {
+    .form-row select:focus,
+    .form-row textarea:focus {
       border-color: var(--primary);
       box-shadow: 0 0 0 3px var(--primary-dim);
+    }
+    .form-row textarea {
+      resize: vertical; line-height: 1.55; min-height: 68px;
     }
     .form-row select { appearance: none; cursor: pointer; }
     .form-row select option { background: var(--surface-2); }
@@ -237,6 +244,57 @@
     .slug-preview strong { color: var(--primary); font-family: monospace; }
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; border-top: 1px solid var(--border); padding-top: 18px; }
     .modal-divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    .field-action-wrap {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .input-action {
+      position: relative; flex: 1; min-width: 0;
+    }
+    .input-action input,
+    .input-action code {
+      padding-right: 44px;
+    }
+    .input-action code {
+      display: block; width: 100%;
+      background: var(--surface-3); border: 1px solid var(--border-2);
+      border-radius: 8px; padding: 9px 44px 9px 12px;
+      color: var(--text); font-size: 13px; line-height: 1.35;
+      word-break: break-all;
+    }
+    .icon-btn {
+      width: 34px; height: 34px; flex: 0 0 34px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text-2);
+      cursor: pointer; transition: color .15s, border-color .15s, background .15s, transform .1s;
+    }
+    .icon-btn:hover { color: var(--text); border-color: var(--border-2); background: var(--surface-3); }
+    .icon-btn:active { transform: scale(.96); }
+    .icon-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .icon-btn svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .input-action .icon-btn {
+      position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+      width: 29px; height: 29px; flex-basis: 29px;
+      background: transparent; border-color: transparent;
+    }
+    .input-action .icon-btn:hover { background: var(--surface-3); border-color: var(--border-2); }
+    .input-action .icon-btn:active { transform: translateY(-50%) scale(.96); }
+    .field-hint {
+      font-size: 11px; color: var(--muted); margin-top: 5px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .field-hint strong { color: var(--text-2); font-weight: 600; }
+    .setup-stack { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .setup-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); display: block; margin-bottom: 4px; font-weight: 600;
+    }
+    .setup-note {
+      margin-top: 16px; padding: 12px; background: var(--surface-3);
+      border-radius: 8px; border-left: 3px solid var(--warning);
+      font-size: 12px; color: var(--text-2); line-height: 1.6;
+    }
 
     /* ── Toast ── */
     #toast {
@@ -255,6 +313,35 @@
 
     .empty-state { padding: 48px 24px; text-align: center; color: var(--muted); font-size: 13px; }
     code { font-family: monospace; font-size: 12px; background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+
+    /* ── Modal Persona IA ── */
+    .modal-section-title {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em;
+      margin: 20px 0 10px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .persona-prompt-preview {
+      white-space: pre-wrap; font-size: 11px; font-family: monospace;
+      background: var(--surface-3); border: 1px solid var(--border-2);
+      border-radius: 8px; padding: 14px; max-height: 300px;
+      overflow-y: auto; line-height: 1.6; color: var(--text-2);
+    }
+    .products-checklist {
+      max-height: 200px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+      background: var(--surface-2);
+    }
+    .products-checklist p { color: var(--muted); font-size: 13px; margin: 4px; }
+    .products-checklist label {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 6px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; color: var(--text-2);
+      text-transform: none; letter-spacing: 0; font-weight: 400;
+      transition: background .1s;
+    }
+    .products-checklist label:hover { background: var(--surface-3); color: var(--text); }
+    .products-checklist input[type=checkbox] { width: auto; accent-color: var(--primary); }
   </style>
 </head>
 <body>
@@ -398,8 +485,18 @@
       </div>
       <div class="form-row">
         <label>Verify Token <span style="font-size:11px;color:var(--muted);font-weight:400">(generado automáticamente)</span></label>
-        <input id="t-verify-token" disabled placeholder="el sistema lo genera al crear" style="font-family:monospace;font-size:12px;opacity:.5;cursor:not-allowed">
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">Se muestra para copiar una vez creado el tenant</div>
+        <div class="field-action-wrap">
+          <div class="input-action">
+            <input id="t-verify-token" readonly placeholder="Generando token..." style="font-family:monospace;font-size:12px">
+            <button type="button" class="icon-btn" title="Copiar token" aria-label="Copiar token" onclick="copyField('t-verify-token',this)">
+              <svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+          </div>
+          <button type="button" class="icon-btn" id="btn-refresh-verify-token" title="Generar otro token" aria-label="Generar otro token">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2"></path><path d="M3 12A9 9 0 0 1 18.5 5.8"></path><path d="M18 3v4h-4"></path><path d="M6 21v-4h4"></path></svg>
+          </button>
+        </div>
+        <div class="field-hint"><span>Listo para pegar en Meta al guardar.</span><strong id="verify-refresh-count">4 cambios disponibles</strong></div>
       </div>
       <div class="modal-divider"></div>
       <div class="form-row">
@@ -432,33 +529,39 @@
     <div class="modal-title" style="color:var(--success)">Tenant creado ✓</div>
     <div class="modal-sub">Copia estos datos para configurar el webhook en Meta Developer Portal</div>
 
-    <div style="margin-top:16px;display:flex;flex-direction:column;gap:12px;">
+    <div class="setup-stack">
       <div>
-        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px;">URL del Webhook</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <code id="meta-webhook-url" style="flex:1;background:var(--surface-3);padding:8px 12px;border-radius:6px;font-size:13px;word-break:break-all;border:1px solid var(--border-2);color:var(--primary)"></code>
-          <button class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('meta-webhook-url',this)">Copiar</button>
+        <label class="setup-label">URL del Webhook</label>
+        <div class="input-action">
+          <code id="meta-webhook-url" style="color:var(--primary)"></code>
+          <button type="button" class="icon-btn" title="Copiar URL" aria-label="Copiar URL" onclick="copyField('meta-webhook-url',this)">
+            <svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
         </div>
       </div>
 
       <div>
-        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px;">Verify Token</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <code id="meta-verify-token" style="flex:1;background:var(--surface-3);padding:8px 12px;border-radius:6px;font-size:13px;word-break:break-all;border:1px solid var(--border-2)"></code>
-          <button class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('meta-verify-token',this)">Copiar</button>
+        <label class="setup-label">Verify Token</label>
+        <div class="input-action">
+          <code id="meta-verify-token"></code>
+          <button type="button" class="icon-btn" title="Copiar token" aria-label="Copiar token" onclick="copyField('meta-verify-token',this)">
+            <svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
         </div>
       </div>
 
       <div id="meta-phone-id-row">
-        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block;margin-bottom:4px;">Phone Number ID</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <code id="meta-phone-id" style="flex:1;background:var(--surface-3);padding:8px 12px;border-radius:6px;font-size:13px;word-break:break-all;border:1px solid var(--border-2)"></code>
-          <button class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('meta-phone-id',this)">Copiar</button>
+        <label class="setup-label">Phone Number ID</label>
+        <div class="input-action">
+          <code id="meta-phone-id"></code>
+          <button type="button" class="icon-btn" title="Copiar Phone Number ID" aria-label="Copiar Phone Number ID" onclick="copyField('meta-phone-id',this)">
+            <svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
         </div>
       </div>
     </div>
 
-    <div style="margin-top:16px;padding:12px;background:var(--surface-3);border-radius:8px;border-left:3px solid var(--warning);font-size:12px;color:var(--text-2);line-height:1.6;">
+    <div class="setup-note">
       <strong style="color:var(--warning)">Próximo paso:</strong> Ve a
       <strong>developers.facebook.com → Tu App → WhatsApp → Configuración</strong>,
       pega la URL del webhook y el Verify Token, activa los eventos
@@ -516,9 +619,11 @@
       </div>
       <div class="form-row">
         <label>Verify Token <span style="font-size:11px;color:var(--muted);font-weight:400">(solo lectura)</span></label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input id="et-verify-token" disabled style="flex:1;font-family:monospace;font-size:12px;opacity:.7;cursor:default">
-          <button type="button" class="btn btn-ghost" style="white-space:nowrap;flex-shrink:0" onclick="copyField('et-verify-token-display',this)">Copiar</button>
+        <div class="input-action">
+          <input id="et-verify-token" readonly style="font-family:monospace;font-size:12px">
+          <button type="button" class="icon-btn" title="Copiar token" aria-label="Copiar token" onclick="copyField('et-verify-token',this)">
+            <svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
         </div>
         <span id="et-verify-token-display" style="display:none"></span>
       </div>
@@ -582,7 +687,7 @@
 
 <!-- ── Modal: Importar CSV ── -->
 <div id="modal-import-csv" class="modal-overlay hidden">
-  <div class="modal" style="width:660px">
+  <div class="modal" style="width:700px;max-height:92vh">
     <div class="modal-title">Importar productos por CSV</div>
     <div class="modal-sub">
       Primera fila = encabezados. Requeridos: <code>name</code>, <code>price</code>, <code>image_url</code>.
@@ -629,7 +734,7 @@
 
     <form id="form-persona">
       <!-- ── Identidad ── -->
-      <div class="modal-section-title" style="margin:16px 0 8px;font-weight:600;color:var(--text-secondary,#666)">Identidad y tono</div>
+      <div class="modal-section-title">Identidad y tono</div>
       <div class="form-row">
         <label>Nombre de la persona <span class="req">*</span></label>
         <input id="per-name" placeholder="Valeria, Carlos, Sofía..." maxlength="40">
@@ -654,7 +759,7 @@
       <div class="modal-divider"></div>
 
       <!-- ── Objeciones ── -->
-      <div class="modal-section-title" style="margin:0 0 8px;font-weight:600;color:var(--text-secondary,#666)">Manejo de objeciones</div>
+      <div class="modal-section-title">Manejo de objeciones</div>
       <div class="form-row">
         <label>Cuando digan "está muy caro"</label>
         <textarea id="per-obj-price" rows="2" maxlength="300" placeholder="Entiendo, la calidad tiene su precio. ¿Te muestro algo similar con mejor precio?"></textarea>
@@ -667,7 +772,7 @@
       <div class="modal-divider"></div>
 
       <!-- ── Tips y restricciones ── -->
-      <div class="modal-section-title" style="margin:0 0 8px;font-weight:600;color:var(--text-secondary,#666)">Tips y restricciones</div>
+      <div class="modal-section-title">Tips y restricciones</div>
       <div class="form-row">
         <label>Consejos de ventas (uno por línea, máx 8)</label>
         <textarea id="per-tips" rows="3" placeholder="Pregunta siempre la talla y la ocasión&#10;Si duda entre dos, sugiere llevarse las dos"></textarea>
@@ -680,15 +785,15 @@
       <div class="modal-divider"></div>
 
       <!-- ── Productos que verá el bot ── -->
-      <div class="modal-section-title" style="margin:0 0 8px;font-weight:600;color:var(--text-secondary,#666)">Productos que verá el bot</div>
+      <div class="modal-section-title">Productos que verá el bot</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-row" style="margin:0">
           <label>Máximo de productos en el prompt</label>
           <input id="per-max-products" type="number" min="1" max="20" value="10">
         </div>
         <div class="form-row" style="margin:0;display:flex;align-items:center;gap:8px;padding-top:20px">
-          <input id="per-in-stock" type="checkbox" checked style="width:auto">
-          <label for="per-in-stock" style="cursor:pointer">Solo productos en stock</label>
+          <input id="per-in-stock" type="checkbox" checked style="width:auto;accent-color:var(--primary)">
+          <label for="per-in-stock" style="cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;font-size:13px;color:var(--text-2)">Solo productos en stock</label>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
@@ -707,9 +812,11 @@
       </div>
 
       <div style="margin-top:12px">
-        <label style="display:block;margin-bottom:6px;font-size:13px">Productos destacados (aparecen primero)</label>
-        <div id="per-products-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border,#e2e8f0);border-radius:6px;padding:8px">
-          <p style="color:#999;font-size:13px;margin:4px">Cargando productos...</p>
+        <div class="form-row" style="margin-bottom:0">
+          <label>Productos destacados (aparecen primero)</label>
+          <div id="per-products-list" class="products-checklist">
+            <p>Cargando productos...</p>
+          </div>
         </div>
       </div>
 
@@ -719,7 +826,7 @@
       <div style="margin-bottom:12px">
         <button type="button" class="btn btn-ghost btn-sm" id="btn-preview-prompt">Ver preview del prompt</button>
       </div>
-      <pre id="persona-prompt-preview" style="display:none;white-space:pre-wrap;font-size:11px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:12px;max-height:300px;overflow-y:auto;line-height:1.5"></pre>
+      <pre id="persona-prompt-preview" class="persona-prompt-preview" style="display:none"></pre>
 
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="btn-cancel-persona">Cancelar</button>
@@ -738,6 +845,8 @@
 let currentUser        = null;
 let selectedTenantSlug = sessionStorage.getItem('selectedTenant') || null;
 let _refreshing        = false;
+let verifyTokenRefreshes = 0;
+const VERIFY_TOKEN_REFRESH_LIMIT = 4;
 
 const LOGOUT_URL = '/panel-ui/login.html';
 
@@ -795,12 +904,72 @@ function toast(msg, type = '') {
 
 function copyField(elementId, btn) {
   const el   = document.getElementById(elementId);
-  const text = el.value !== undefined ? el.value : el.textContent;
+  const text = (el.value !== undefined ? el.value : el.textContent).trim();
+  if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = 'Copiado!';
-    setTimeout(() => { btn.textContent = orig; }, 1800);
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>';
+    setTimeout(() => { btn.innerHTML = orig; }, 1200);
   });
+}
+
+function randomHex(bytes = 16) {
+  const buffer = new Uint8Array(bytes);
+  if (window.crypto && crypto.getRandomValues) {
+    crypto.getRandomValues(buffer);
+  } else {
+    for (let i = 0; i < buffer.length; i++) buffer[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(buffer, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function generateVerifyToken(slug) {
+  const prefix = slug || 'tenant';
+  return `${prefix}-${randomHex(16)}`;
+}
+
+function updateVerifyRefreshState() {
+  const remaining = Math.max(0, VERIFY_TOKEN_REFRESH_LIMIT - verifyTokenRefreshes);
+  const countEl = document.getElementById('verify-refresh-count');
+  const btn = document.getElementById('btn-refresh-verify-token');
+  if (countEl) countEl.textContent = remaining === 1 ? '1 cambio disponible' : `${remaining} cambios disponibles`;
+  if (btn) {
+    btn.disabled = remaining === 0;
+    btn.title = remaining === 0 ? 'Limite de cambios alcanzado' : 'Generar otro token';
+  }
+}
+
+function setNewVerifyToken(countRefresh = false) {
+  if (countRefresh && verifyTokenRefreshes >= VERIFY_TOKEN_REFRESH_LIMIT) {
+    toast('Limite de 4 cambios de token alcanzado', 'err');
+    return;
+  }
+  const slug = generateSlug(document.getElementById('t-name').value || '');
+  document.getElementById('t-verify-token').value = generateVerifyToken(slug);
+  if (countRefresh) verifyTokenRefreshes += 1;
+  updateVerifyRefreshState();
+}
+
+function showMetaSetupModal(data, fallbackBody) {
+  const tenant = data.tenant || {};
+  const setup = data.meta_setup || {};
+  const slug = tenant.slug || setup.slug || generateSlug(fallbackBody.name || '');
+  const webhookUrl = setup.webhook_url || data.webhook_url || `${window.location.origin}/webhook/${slug}`;
+  const verifyToken = setup.verify_token || data.verify_token || fallbackBody.verify_token || '';
+  const phoneNumberId = setup.phone_number_id || data.phone_number_id || fallbackBody.phone_number_id || '';
+
+  document.getElementById('meta-webhook-url').textContent = webhookUrl;
+  document.getElementById('meta-verify-token').textContent = verifyToken || '(sin token)';
+
+  const phoneIdRow = document.getElementById('meta-phone-id-row');
+  if (phoneNumberId) {
+    document.getElementById('meta-phone-id').textContent = phoneNumberId;
+    phoneIdRow.style.display = 'block';
+  } else {
+    phoneIdRow.style.display = 'none';
+  }
+
+  document.getElementById('modal-meta-setup').classList.remove('hidden');
 }
 
 function fmtDate(d) {
@@ -974,6 +1143,8 @@ async function loadTenants() {
 document.getElementById('btn-nuevo-tenant').addEventListener('click', () => {
   document.getElementById('form-tenant').reset();
   document.getElementById('slug-preview').textContent = '—';
+  verifyTokenRefreshes = 0;
+  setNewVerifyToken(false);
   document.getElementById('modal-tenant').classList.remove('hidden');
 });
 document.getElementById('btn-cancel-tenant').addEventListener('click', () => {
@@ -982,7 +1153,12 @@ document.getElementById('btn-cancel-tenant').addEventListener('click', () => {
 
 document.getElementById('t-name').addEventListener('input', (e) => {
   const slug = generateSlug(e.target.value);
+  if (verifyTokenRefreshes === 0) setNewVerifyToken(false);
   document.getElementById('slug-preview').textContent = slug || '—';
+});
+
+document.getElementById('btn-refresh-verify-token').addEventListener('click', () => {
+  setNewVerifyToken(true);
 });
 
 document.getElementById('form-tenant').addEventListener('submit', async (e) => {
@@ -994,6 +1170,7 @@ document.getElementById('form-tenant').addEventListener('submit', async (e) => {
       name:            document.getElementById('t-name').value.trim(),
       wa_token:        document.getElementById('t-wa-token').value || undefined,
       phone_number_id: document.getElementById('t-phone-id').value || undefined,
+      verify_token:    document.getElementById('t-verify-token').value || undefined,
       owner_phone:     document.getElementById('t-owner-phone').value,
       owner_email:     document.getElementById('t-owner-email').value || undefined,
       plan:            document.getElementById('t-plan').value,
@@ -1006,21 +1183,7 @@ document.getElementById('form-tenant').addEventListener('submit', async (e) => {
 
     document.getElementById('modal-tenant').classList.add('hidden');
 
-    // Mostrar datos de configuración Meta
-    if (data.meta_setup) {
-      document.getElementById('meta-webhook-url').textContent  = data.meta_setup.webhook_url;
-      document.getElementById('meta-verify-token').textContent = data.meta_setup.verify_token || '(no ingresado)';
-      const phoneIdRow = document.getElementById('meta-phone-id-row');
-      if (data.meta_setup.phone_number_id) {
-        document.getElementById('meta-phone-id').textContent = data.meta_setup.phone_number_id;
-        phoneIdRow.style.display = 'block';
-      } else {
-        phoneIdRow.style.display = 'none';
-      }
-      document.getElementById('modal-meta-setup').classList.remove('hidden');
-    } else {
-      toast(`Tenant "${data.tenant.name}" creado → ${data.tenant.slug}`, 'ok');
-    }
+    showMetaSetupModal(data, body);
 
     await Promise.all([loadTenants(), loadDashboard()]);
   } catch (err) {
@@ -1163,8 +1326,7 @@ async function openPersonaModal(slug) {
   document.getElementById('per-max-products').value = 10;
   document.getElementById('per-in-stock').checked   = true;
   document.getElementById('persona-prompt-preview').style.display = 'none';
-  document.getElementById('per-products-list').innerHTML =
-    '<p style="color:#999;font-size:13px;margin:4px">Cargando productos...</p>';
+  document.getElementById('per-products-list').innerHTML = '<p>Cargando productos...</p>';
 
   document.getElementById('modal-persona').classList.remove('hidden');
 
@@ -1203,14 +1365,14 @@ async function openPersonaModal(slug) {
     const featuredIds = new Set(pf.featured_ids || []);
     if (!products.length) {
       document.getElementById('per-products-list').innerHTML =
-        '<p style="color:#999;font-size:13px;margin:4px">Sin productos — agrega productos primero</p>';
+        '<p>Sin productos — agrega productos primero</p>';
     } else {
       document.getElementById('per-products-list').innerHTML = products.map((p) => `
-        <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px">
-          <input type="checkbox" class="per-featured-cb" value="${p.id}" ${featuredIds.has(p.id) ? 'checked' : ''} style="width:auto">
+        <label>
+          <input type="checkbox" class="per-featured-cb" value="${p.id}" ${featuredIds.has(p.id) ? 'checked' : ''}>
           <span>${p.emoji || '🛍️'} <strong>${p.name}</strong> — $${(p.price||0).toLocaleString('es-CO')}
-            ${(p.sizes||[]).length ? `<span style="color:#888">(${p.sizes.join(', ')})</span>` : ''}
-            ${!p.active ? '<span style="color:#e53e3e;font-size:11px">[inactivo]</span>' : ''}
+            ${(p.sizes||[]).length ? `<span style="color:var(--muted)">(${p.sizes.join(', ')})</span>` : ''}
+            ${!p.active ? '<span style="color:var(--danger);font-size:11px">[inactivo]</span>' : ''}
           </span>
         </label>
       `).join('');
@@ -1542,19 +1704,122 @@ document.getElementById('btn-confirm-import-csv').addEventListener('click', asyn
       body: JSON.stringify({ products: _csvValidRows }),
     });
     const data = await res.json();
-    if (res.status === 400) throw new Error(data.error || 'Ningún producto válido');
+    if (!res.ok) throw new Error(data.error || 'Error al importar');
 
-    document.getElementById('modal-import-csv').classList.add('hidden');
-    let msg = `${data.inserted} producto(s) importados correctamente.`;
-    if (data.errors && data.errors.length) msg += ` ${data.errors.length} error(es) del servidor.`;
-    toast(msg, 'ok');
-    loadProductos(slug);
+    if ((data.inserted || []).length > 0) loadProductos(slug);
+    _showImportResult(data);
   } catch (err) {
     if (err.message !== 'No autenticado') toast('Error: ' + err.message, 'err');
     btn.disabled    = false;
     btn.textContent = `Subir ${_csvValidRows.length} producto${_csvValidRows.length !== 1 ? 's' : ''}`;
   }
 });
+
+function _showImportResult(data) {
+  const inserted  = data.inserted || [];
+  const skipped   = data.skipped  || [];
+  const errors    = data.errors   || [];
+  const total     = inserted.length + skipped.length + errors.length;
+  const failed    = [...skipped, ...errors];
+  const hasFailed = failed.length > 0;
+
+  const overlay = document.getElementById('modal-import-csv');
+  const modal   = overlay.querySelector('.modal');
+
+  // ── Todo OK: cerrar modal y mostrar toast ────────────────────────────────
+  if (!hasFailed) {
+    overlay.classList.add('hidden');
+    toast(`✓ ${inserted.length} producto${inserted.length !== 1 ? 's' : ''} importados correctamente`, 'ok');
+    return;
+  }
+
+  // ── Hay fallidos: mostrar pantalla de resultado ──────────────────────────
+  const statusBadge = {
+    skip: `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;background:var(--warning-dim);color:var(--warning);white-space:nowrap">⚠ Ya existe</span>`,
+    err:  `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;background:var(--danger-dim);color:var(--danger);white-space:nowrap">✕ Error</span>`,
+  };
+
+  const tableRows = [
+    ...skipped.map((p) => ({ ...p, _status: 'skip' })),
+    ...errors .map((p) => ({ ...p, _status: 'err'  })),
+  ].map((p) => {
+    const price = p.price !== undefined ? `$${Number(p.price).toLocaleString('es-CO')}` : '—';
+    const rowBg = p._status === 'err'
+      ? 'background:rgba(255,95,95,.05)'
+      : 'background:rgba(245,158,11,.04)';
+    return `
+      <tr style="${rowBg}">
+        <td style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px;line-height:1">${p.emoji || '🛍️'}</span>
+            <div>
+              <div style="font-weight:600;color:var(--text)">${p.name}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${p.reason}</div>
+            </div>
+          </div>
+        </td>
+        <td style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-2);white-space:nowrap">${price}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)">${p.category || '—'}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid var(--border);text-align:right">${statusBadge[p._status]}</td>
+      </tr>`;
+  }).join('');
+
+  const allFailed = inserted.length === 0;
+  const titleColor = allFailed ? 'var(--danger)' : 'var(--warning)';
+  const titleIcon  = allFailed ? '✕' : '⚠';
+  const titleText  = allFailed
+    ? 'No se importó ningún producto'
+    : `${inserted.length} de ${total} importados`;
+
+  modal.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:6px">
+      <div style="flex:1">
+        <div class="modal-title" style="color:${titleColor}">${titleIcon} ${titleText}</div>
+        <div class="modal-sub" style="margin-bottom:0">${failed.length} producto${failed.length !== 1 ? 's' : ''} no pudieron importarse — revisa los detalles abajo</div>
+      </div>
+    </div>
+
+    <!-- Contadores compactos -->
+    <div style="display:flex;gap:8px;margin:16px 0">
+      <div style="flex:1;display:flex;align-items:center;gap:10px;background:var(--success-dim);border:1px solid var(--success);border-radius:8px;padding:10px 14px">
+        <div style="font-size:22px;font-weight:700;color:var(--success);line-height:1">${inserted.length}</div>
+        <div style="font-size:11px;color:var(--success);font-weight:600;text-transform:uppercase;letter-spacing:.04em">Importados</div>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;gap:10px;background:var(--warning-dim);border:1px solid var(--warning);border-radius:8px;padding:10px 14px">
+        <div style="font-size:22px;font-weight:700;color:var(--warning);line-height:1">${skipped.length}</div>
+        <div style="font-size:11px;color:var(--warning);font-weight:600;text-transform:uppercase;letter-spacing:.04em">Ya existían</div>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;gap:10px;background:var(--danger-dim);border:1px solid var(--danger);border-radius:8px;padding:10px 14px">
+        <div style="font-size:22px;font-weight:700;color:var(--danger);line-height:1">${errors.length}</div>
+        <div style="font-size:11px;color:var(--danger);font-weight:600;text-transform:uppercase;letter-spacing:.04em">Errores</div>
+      </div>
+    </div>
+
+    <!-- Tabla solo con los fallidos, scrollable -->
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
+      Productos que no se importaron
+    </div>
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <div style="overflow-y:auto;max-height:280px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead style="position:sticky;top:0;z-index:1">
+            <tr style="background:var(--surface-2)">
+              <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">Producto</th>
+              <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">Precio</th>
+              <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">Categoría</th>
+              <th style="padding:8px 14px;text-align:right;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">Motivo</th>
+            </tr>
+          </thead>
+          <tbody style="background:var(--surface)">${tableRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" onclick="document.getElementById('modal-import-csv').classList.add('hidden')">Entendido</button>
+    </div>
+  `;
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
