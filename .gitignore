@@ -37,3 +37,20 @@ Thumbs.db
 # Docker volumes / data
 pgdata/
 redisdata/
+
+# Tests
+tests/
+
+# Docs internos
+docs/
+API_TEST_REPORT.md
+ARCHITECTURE.md
+
+# Demo UI
+demo/
+
+# graphify
+graphify-out/
+.graphify_python
+.graphify_*.json
+.graphify_*.txt

@@ -5,9 +5,11 @@ const express    = require('express');
 const botService = require('../core/botService');
 const configRepo = require('./configRepository');
 const { requireTenantAuth, tenantRateLimit } = require('./authMiddleware');
+const { securityHeaders } = require('../middleware/security');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
+router.use(securityHeaders());   // API_CSP por defecto
 router.use(requireTenantAuth);
 router.use(tenantRateLimit);
 

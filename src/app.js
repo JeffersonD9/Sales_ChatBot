@@ -22,8 +22,13 @@ const panelRouter          = require('./panel/routes');
 const { healthCheck, isDbConnectionError } = require('./db');
 const { redisHealthCheck } = require('./redis');
 const { logger }           = require('./utils/logger');
+const { tenantApiCors }    = require('./middleware/cors');
+const { securityHeaders }  = require('./middleware/security');
 
 const app = express();
+
+// Eliminar header que revela que usamos Express
+app.disable('x-powered-by');
 
 // ── 1. rawBody capture (ANTES de json parser) ─────────────────────────────
 // Captura el body crudo como string para la verificación HMAC de Meta.
@@ -58,15 +63,17 @@ app.use('/panel-ui', express.static(path.join(__dirname, '..', 'public', 'panel'
 }));
 
 // ── 4. Routers ────────────────────────────────────────────────────────────
+// CORS solo en /api/whatsapp: los tenants pueden llamar desde sus propias apps.
+// /webhook → Meta (server-to-server, sin Origin). /admin y /panel → mismo origen.
 app.use('/webhook',      webhookRouter);
 app.use('/admin',        adminRouter);
-app.use('/api/whatsapp', configRouter);
+app.use('/api/whatsapp', tenantApiCors(), configRouter);
 app.use('/demo',         demoRouter);
 app.use('/metrics',      metricsRouter);
 app.use('/panel',        panelRouter);
 
 // ── 5. Health check público ───────────────────────────────────────────────
-app.get('/health', async (_req, res) => {
+app.get('/health', securityHeaders(), async (_req, res) => {
   const [dbOk, redisOk] = await Promise.all([healthCheck(), redisHealthCheck()]);
   const { cachedSlugs } = require('./tenants/loader');
   res.json({

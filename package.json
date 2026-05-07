@@ -29,6 +29,7 @@
     "@anthropic-ai/sdk": "^0.92.0",
     "axios": "^1.7.2",
     "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.2",
     "express": "^4.19.2",

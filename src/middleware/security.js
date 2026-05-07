@@ -182,6 +182,14 @@ function progressiveBackoff({
 
 // ── Security Headers ──────────────────────────────────────────────────────────
 
+// ── HSTS ──────────────────────────────────────────────────────────────────────
+// Solo enviamos HSTS en producción (detrás de nginx con TLS).
+// En desarrollo sin HTTPS el header es inútil e impediría usar HTTP.
+// max-age = 1 año; includeSubDomains protege subdominios del mismo dominio base.
+const HSTS_MAX_AGE = process.env.NODE_ENV === 'production'
+  ? parseInt(process.env.HSTS_MAX_AGE || '31536000', 10)
+  : 0;
+
 // CSP del panel: necesita unsafe-inline para estilos del SPA (CSS variables inline).
 // Los scripts del SPA están en el mismo origen (self).
 // frame-ancestors 'none' duplica X-Frame-Options para navegadores modernos.
@@ -214,6 +222,10 @@ function securityHeaders({ csp = API_CSP } = {}) {
     res.set('Referrer-Policy',         'strict-origin-when-cross-origin');
     res.set('Content-Security-Policy', csp);
     res.set('Permissions-Policy',      'camera=(), microphone=(), geolocation=()');
+    // HSTS: solo en producción (detrás de TLS). Omitir en dev evita romper HTTP local.
+    if (HSTS_MAX_AGE > 0) {
+      res.set('Strict-Transport-Security', `max-age=${HSTS_MAX_AGE}; includeSubDomains`);
+    }
     next();
   };
 }
