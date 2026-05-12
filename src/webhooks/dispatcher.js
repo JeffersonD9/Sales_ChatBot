@@ -1,44 +1,27 @@
-/**
- * webhooks/dispatcher.js — Despacha mensajes al flow engine del tenant correcto
- *
- * Flujo:
- *   1. Extraer tenantSlug y mensajes del body de Meta
- *   2. Cargar tenant desde loader (cache o DB)
- *   3. Para cada mensaje: cargar sesión → procesar → guardar sesión
- *
- * La idempotencia se maneja con un LRU cache de IDs procesados (máx 10k entradas,
- * TTL 24h). Reemplaza el Set+setTimeout anterior que crecía sin límite bajo carga.
- */
+'use strict';
 
-const { LRUCache }                   = require('lru-cache');
-const tenantLoader                   = require('../tenants/loader');
-const { getState, saveState }        = require('../core/state/manager');
-const { processMessage }             = require('../core/flow-engine/engine');
-const notifier                       = require('../notifications/notifier');
-const { logger }                     = require('../utils/logger');
+const { LRUCache } = require('lru-cache');
+const tenantLoader = require('../platform/tenancy/loader');
+const { getState, saveState } = require('../core/state/manager');
+const { processMessage } = require('../core/flow-engine/engine');
+const notifier = require('../notifications/notifier');
+const { logger } = require('../utils/logger');
 
-// ── Idempotencia: evita procesar el mismo mensaje dos veces ───────────────
 const processedIds = new LRUCache({
   max: 10_000,
-  ttl: 24 * 60 * 60 * 1000, // 24h
+  ttl: 24 * 60 * 60 * 1000,
 });
 
 function markProcessed(msgId) {
   processedIds.set(msgId, 1);
 }
 
-// ── Dispatch principal ────────────────────────────────────────────────────
-
-/**
- * @param {string} tenantSlug
- * @param {object} webhookBody  - Body completo del POST de Meta
- */
 async function dispatch(tenantSlug, webhookBody) {
   if (webhookBody.object !== 'whatsapp_business_account') return;
 
   const tenant = await tenantLoader.get(tenantSlug);
   if (!tenant) {
-    logger.warn({ tenantSlug }, '[Dispatcher] Tenant no encontrado — mensaje ignorado');
+    logger.warn({ tenantSlug }, '[Dispatcher] Tenant no encontrado - mensaje ignorado');
     return;
   }
 
@@ -48,9 +31,8 @@ async function dispatch(tenantSlug, webhookBody) {
 
       for (const message of change.value?.messages || []) {
         const waFrom = message.from;
-        const msgId  = message.id;
+        const msgId = message.id;
 
-        // Idempotencia: Meta puede enviar el mismo webhook más de una vez
         if (msgId && processedIds.has(msgId)) {
           logger.debug({ tenantSlug, waFrom, msgId }, '[Dispatcher] Mensaje duplicado ignorado');
           continue;

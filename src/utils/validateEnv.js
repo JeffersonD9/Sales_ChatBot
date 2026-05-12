@@ -1,37 +1,42 @@
-/**
- * validateEnv.js — Validación de variables de entorno al arranque
- *
- * Lanza un error con mensaje claro si falta alguna variable crítica.
- * Llamar antes de iniciar cualquier servidor o conexión.
- */
+'use strict';
+
+const {
+  getDefaultTenantDatabaseUrl,
+  getPlatformDatabaseUrl,
+  getRedisUrl,
+  isDemoOrTest,
+  isRedisRequired,
+} = require('../config/infra');
 
 function validateEnv() {
-  // En modo demo y en tests, la DB y secretos no son necesarios
-  const isDemoOrTest = process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test';
-
-  const required = isDemoOrTest
-    ? [] // demo/test: sin requisitos de infra
+  const required = isDemoOrTest()
+    ? []
     : [
-        'DATABASE_URL',
         'META_APP_SECRET',
         'ENCRYPTION_KEY',
         'ADMIN_API_KEY',
-        // Módulo whatsapp-saas
-        'APP_SECRET',           // llave pgcrypto (min 32 chars)
-        'REDIS_URL',            // ej. redis://:password@redis:6379
-        'REDIS_PASSWORD',       // password para Redis (min 16 chars)
-        'JWT_SECRET',           // firma tokens de tenant /api/whatsapp/*
-        // Panel de administración
-        'PANEL_JWT_SECRET',     // firma access tokens del panel (min 64 chars)
-        'PANEL_REFRESH_SECRET', // HMAC refresh tokens del panel (min 64 chars)
+        'APP_SECRET',
+        'JWT_SECRET',
       ];
 
   const missing = required.filter((key) => !process.env[key]);
 
+  if (!isDemoOrTest() && !getPlatformDatabaseUrl()) {
+    missing.push('PLATFORM_DATABASE_URL or DATABASE_URL');
+  }
+
+  if (!isDemoOrTest() && !getDefaultTenantDatabaseUrl()) {
+    missing.push('TENANT_DATABASE_URL_DEFAULT or DATABASE_URL');
+  }
+
+  if (isRedisRequired() && !getRedisUrl()) {
+    missing.push('REDIS_URL');
+  }
+
   if (missing.length > 0) {
     throw new Error(
       `[validateEnv] Variables de entorno faltantes: ${missing.join(', ')}\n` +
-      `Revisa tu archivo .env (ver .env.example)`
+      'Revisa tu archivo .env (ver .env.example)'
     );
   }
 }

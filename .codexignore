@@ -1,0 +1,11 @@
+node_modules
+dist
+.next
+coverage
+logs
+*.log
+*.png
+*.jpg
+*.zip
+pnpm-lock.yaml
+package-lock.json

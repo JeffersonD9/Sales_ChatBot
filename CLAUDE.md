@@ -1,274 +1,556 @@
 # whatsapp-saas
 
-Plataforma SaaS multi-tenant de bots de ventas por WhatsApp. Un solo proceso, N clientes aislados.
+WhatsApp Sales Agent SaaS multi-tenant. La arquitectura objetivo separa plataforma, WhatsApp, workers y bases de datos de tenants para poder crecer desde un MVP sencillo hasta tenants dedicados sin reescribir el producto.
 
-> Para entender la arquitectura en detalle (flujos, capas de datos, aislamiento multi-tenant), ver [ARCHITECTURE.md](./ARCHITECTURE.md).
-
----
-
-## Comandos de desarrollo
-
-```bash
-# Levantar entorno completo (app + postgres + redis con hot reload)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-
-# Alias recomendado
-alias dcdev="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
-dcdev up -d                              # en background
-dcdev logs -f app                        # ver logs
-dcdev exec app npm run migrate           # correr migrations SQL
-dcdev exec app node scripts/create-tenant.js --slug=demo ...
-dcdev down                               # apagar
-dcdev down -v                            # apagar + borrar volúmenes (reset total)
-```
-
-**Sin Docker (solo Node):**
-```bash
-npm run dev          # nodemon, requiere postgres y redis locales
-npm start            # producción
-npm test             # todos los tests
-npm run test:unit    # solo unitarios
-npm run migrate      # correr migrations SQL pendientes
-```
+Regla critica: esta aplicacion no ejecuta migraciones. La base de datos vive dentro del proyecto/infra, pero el schema se administra fuera del runtime de la app. Aqui solo se hacen consultas, inserts, updates, deletes y operaciones normales de producto. La conexion se configura por variables de entorno.
 
 ---
 
-## Setup inicial (primera vez)
+## Modelo objetivo
 
-```bash
-# 1. Copiar variables de entorno para desarrollo
-cp .env.dev.example .env
+### Servicios
 
-# 2. Levantar infra + app
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+| Servicio | Responsabilidad |
+| --- | --- |
+| SaaS API | auth, tenants, billing, planes, admin, configuracion, metadata de ruteo |
+| WhatsApp Bot Service | webhooks, verificacion Meta, ingestion, sesiones, envio de mensajes |
+| Worker Service | jobs, reintentos, schedules, notificaciones, tareas de background |
+| AI Worker opcional | LLM, vision, audio, embeddings, workflows AI |
+| Redis | queues, cache, session store, rate limiting, locks |
+| PostgreSQL | platform DB y tenant DBs compartidas o dedicadas |
+| Reverse proxy | Nginx o Traefik |
 
-# 3. Correr migrations (con DEMO_MODE=false en .env)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app npm run migrate
-
-# 4. Verificar en http://localhost:3000/health
-```
-
-Con `DEMO_MODE=true` (valor por defecto en `.env.dev.example`): no necesitas correr migrations.
-La app levanta sin DB real y puedes probar el flujo en http://localhost:3000/demo.
+El MVP puede seguir corriendo como un solo proceso mientras se extraen boundaries internos. La meta no es Kubernetes; la meta es Docker Compose bien separado y facil de operar.
 
 ---
 
-## Arquitectura
+## Estrategia multi-tenant
 
-### Flujo de un mensaje entrante
-```
-POST /webhook/:slug
-  → verifier.js       verificar HMAC-SHA256
-  → dispatcher.js     cargar tenant, deduplicar, cargar sesión
-  → engine.js         router por session.step
-  → steps/*.js        handler específico
-  → sender.js         responder vía Meta Cloud API
-```
+La plataforma debe soportar asignacion hibrida:
 
-### Flujo de configuración avanzada del bot
-```
-PUT /api/whatsapp/config
-  → authMiddleware.js  verificar JWT del tenant
-  → configRouter.js   validar body
-  → botService.js     validateBotConfig (Zod) → saveConfig
-  → configRepository  DB (pgcrypto) → bust Redis cache
-```
+| Tipo de tenant | Ubicacion |
+| --- | --- |
+| Small | DB compartida low-tier |
+| Medium | DB compartida medium-tier |
+| Large / elephant | DB dedicada |
 
-### Acceso a datos por capa
+Nunca asumir que todos los tenants viven en una unica base. Todo acceso tenant-domain debe pasar por Tenant Resolution Layer y Connection Manager.
 
-| Capa | Tecnología | TTL | Propósito |
-|------|-----------|-----|-----------|
-| L1 RAM | `Map` en `state/manager.js` | proceso | sesiones de conversación activas |
-| L1 RAM | `Map` en `tenants/loader.js` | 5 min | config básica del tenant (token, productos) |
-| L2 Redis | `tenants/configRepository.js` | 5 min | config avanzada del bot (`tenant_whatsapp_config`) |
-| L3 PostgreSQL | toda lectura/escritura | — | fuente de verdad |
+### Platform database
 
-### Machine de estados (STEP enum — `utils/constants.js`)
-```
-NEW → MENU → OPT_CATALOGO → CATALOG_TALLA → CATALOG_PRESUPUESTO → CATALOG_SHOWING
-                                               → CATALOG_SELECTING / CATALOG_OBJECTION → ORDER_NAME
-           → ORDER_NAME → ORDER_ADDRESS → ORDER_PAYMENT → ORDER_DONE
-           → CHECK_ORDER
-```
-Comandos globales (`menu`, `hola`, `inicio`, `0`) resetean a MENU desde cualquier step.
+Contiene metadata SaaS:
 
----
+- users
+- tenants
+- subscriptions
+- plans
+- billing
+- db_clusters
+- tenant_db_allocations
+- feature flags
+- routing metadata
 
-## Archivos clave
+### Tenant databases
 
-| Archivo | Rol |
-|---------|-----|
-| `src/app.js` | Express: middleware y routers |
-| `src/db.js` | Pool PostgreSQL singleton |
-| `src/redis.js` | Cliente Redis singleton |
-| `src/tenants/loader.js` | Cache de tenants (slug → objeto completo con productos) |
-| `src/tenants/repository.js` | SQL de tenants y productos |
-| `src/tenants/configRepository.js` | CRUD de `tenant_whatsapp_config` con caché Redis |
-| `src/tenants/authMiddleware.js` | JWT auth + rate limiting por tenant |
-| `src/tenants/configRouter.js` | API REST `/api/whatsapp/*` |
-| `src/core/botService.js` | Lógica del bot: procesar mensaje, init, actualizar config |
-| `src/core/flow-engine/engine.js` | Router principal de mensajes — empezar aquí para bugs de flujo |
-| `src/core/whatsapp/sender.js` | Llamadas a Meta Cloud API (`graph.facebook.com/v20.0`) |
-| `src/utils/botConfigSchema.js` | Schema Zod de `bot_config` |
-| `src/webhooks/router.js` | `GET /webhook/:slug` (verify) + `POST /webhook/:slug` (mensajes) |
-| `src/webhooks/verifier.js` | HMAC-SHA256 con `timingSafeEqual` |
-| `src/admin/router.js` | API admin (`/admin/*`) para gestionar tenants y productos |
-| `migrations/001_initial_schema.sql` | Tablas: `tenants`, `products`, `sessions`, `orders` |
-| `migrations/002_tenant_whatsapp_config.sql` | Tabla `tenant_whatsapp_config` con pgcrypto + RLS |
+Contienen datos operativos del tenant:
+
+- conversations
+- messages
+- sessions
+- products / catalog
+- orders
+- workflows
+- automations
+- embeddings futuras
+- customer data
+
+Durante la transicion puede existir una DB compartida inicial, pero el codigo debe tratarla como una asignacion, no como un singleton global permanente.
 
 ---
 
-## Infraestructura Docker
+## Analisis actual
 
-### Archivos
+### Lo que ya existe y conviene conservar
 
-| Archivo | Propósito |
-|---------|-----------|
-| `Dockerfile` | Multi-stage: `dev` (hot reload) + `runner` (producción) |
-| `docker-compose.yml` | Base: servicios compartidos (postgres + redis) |
-| `docker-compose.dev.yml` | Override dev: app con nodemon, puertos expuestos |
-| `docker-compose.prod.yml` | Override prod: app + nginx (envsubst template) + certbot |
-| `.dockerignore` | Excluye node_modules, .env, tests de la imagen |
-| `.env.dev.example` | Template para desarrollo (DEMO_MODE=true por defecto) |
-| `.env.example` | Template para producción |
-| `nginx/nginx.conf` | Config nginx (HTTP→HTTPS + proxy) — para producción |
+- Express esta separado en `src/app.js` y `src/server.js`.
+- Redis ya existe como dependencia operativa.
+- Webhook responde 200 rapido y procesa luego con `setImmediate`.
+- Hay `TenantResolver` en `src/platform/tenancy/tenantResolver.js`.
+- Hay `ConnectionManager` en `src/platform/database/connectionManager.js`.
+- Hay `tenant_db_allocations` y `db_clusters` en `src/drizzle/schema.js`.
+- El codigo usa Drizzle y consultas parametrizadas en varias zonas.
+- Hay logging con Pino y endpoint `/metrics`.
+- Hay healthchecks en compose para postgres y redis.
 
-### Por qué dos compose files
+### Bottlenecks actuales
 
-`docker-compose.yml` define solo postgres y redis (infra compartida).
-El override dev añade el servicio `app` con volumen montado para hot reload y expone puertos de infra para herramientas locales.
-El override prod añadirá nginx + certbot y removerá los puertos expuestos de infra.
+- `src/db.js` sigue siendo un pool singleton global.
+- `src/drizzle/db.js` crea un singleton Drizzle global.
+- `state/manager.js` lee y guarda sesiones contra el pool global.
+- `configRepository.js`, `scheduler.js`, billing y partes admin siguen asumiendo DB unica.
+- AI se ejecuta dentro del flujo del mensaje y puede bloquear procesamiento.
+- No existe BullMQ todavia.
+- Idempotencia de mensajes entrantes esta en memoria, por proceso.
+- Sesiones activas estan en RAM, lo que complica escalar horizontalmente.
+- Schedules corren dentro del proceso web.
+- Docker todavia modela `app` como servicio monolitico.
+- Compose no define limites de CPU/memoria para servicios.
+- Backups existen como script, pero no como servicio/schedule versionado por platform DB y tenant DBs.
 
----
+### Anti-patrones a eliminar progresivamente
 
-## Schema de base de datos
-
-### `tenants` (migration 001)
-Clientes del SaaS. Contiene el token Meta encriptado a nivel aplicación (`ENCRYPTION_KEY`), `bot_config` JSONB con metadata básica del negocio.
-
-### `products` (migration 001)
-Catálogo por tenant. `filterProducts(products, talla, budget)` en `core/catalog.js` los filtra y ordena.
-
-### `sessions` (migration 001)
-Estado de cada conversación. PK compuesta `(tenant_id, wa_from)`. UPSERT en cada mensaje. L1 RAM en `state/manager.js`.
-
-### `orders` (migration 001)
-Pedidos generados por el bot.
-
-### `tenant_whatsapp_config` (migration 002)
-Config avanzada del bot. 1:1 con `tenants`. Campos `session_data` y `webhook_secret` encriptados con `pgp_sym_encrypt` (pgcrypto, llave `APP_SECRET`). RLS habilitado.
-
----
-
-## API `/api/whatsapp` — Auth: `Authorization: Bearer <JWT>`
-
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| `POST` | `/webhook` | Procesar mensaje (fire-and-forget, 200 inmediato) |
-| `GET` | `/config` | Leer `bot_config` del tenant |
-| `PUT` | `/config` | Crear/actualizar config del bot |
-| `DELETE` | `/config` | Eliminar config |
+- Pool global como dependencia de repositorios tenant-domain.
+- Joins desde datos tenant hacia `tenants` en la DB de plataforma para operaciones conversacionales.
+- AI sin cola.
+- Schedules con `setTimeout`/`setInterval` dentro del API.
+- Cache e idempotencia por memoria local para datos que deben sobrevivir replicas.
+- Scripts o instrucciones que pidan `npm run migrate` dentro de esta app.
+- Documentacion que prometa "un solo proceso, N clientes aislados" como estado final.
+- Mezclar auth/admin/billing con ingestion WhatsApp y AI en el mismo boundary logico.
 
 ---
 
-## Variables de entorno
+## Roadmap de refactor
+
+### Fase 0: contrato y seguridad operativa
+
+- Mantener MVP operativo.
+- Congelar regla: la app no corre migraciones.
+- Cambiar docs y runbooks para usar `DATABASE_URL`, `PLATFORM_DATABASE_URL` y `TENANT_DATABASE_URL_DEFAULT`.
+- Auditar repositorios que importan `src/db.js` o `src/drizzle/db.js`.
+- Crear tests para resolver tenant y conexion por allocation.
+
+### Fase 1: boundaries internos
+
+- API, WhatsApp y Worker siguen en el mismo repo, pero con entrypoints separados.
+- Extraer `src/services/api`, `src/services/whatsapp`, `src/services/worker`.
+- Mover schedules fuera de `server.js`.
+- Convertir webhook POST en enqueue a Redis/BullMQ.
+- Hacer que el worker procese mensajes y actualice sesiones.
+
+### Fase 2: tenant-aware data access
+
+- Todo repositorio tenant-domain recibe `tenantContext`.
+- `state/manager.js` usa tenant DB o Redis session store, no platform singleton.
+- Catalogo, orders, sessions y messages se mueven a repositorios tenant-aware.
+- Platform DB solo resuelve metadata, billing, auth y routing.
+
+### Fase 3: AI asincrona opcional
+
+- Feature flag por tenant: `features.aiEnabled`.
+- Cola separada para AI: `ai.jobs`.
+- Worker AI escalable independiente.
+- Timeouts, budgets, quotas y metrica por tenant.
+- Guardar historial/respuesta sin bloquear webhook.
+
+### Fase 4: infraestructura hibrida
+
+- Compose con servicios separados: `api`, `whatsapp`, `worker`, `ai-worker`, `redis`, `platform-postgres`, `tenant-postgres-low`, `nginx`.
+- Agregar dedicated tenant DBs segun necesidad.
+- Backups independientes por DB.
+- Observabilidad lista para Loki/Grafana/Sentry.
+
+---
+
+## Service decomposition plan
+
+### SaaS API
+
+Debe exponer:
+
+- `/health`
+- `/metrics`
+- `/admin/*`
+- `/api/whatsapp/config`
+- auth de usuarios y tenants
+- billing
+- tenant provisioning
+- db allocation metadata
+
+No debe procesar conversaciones ni llamar LLM.
+
+### WhatsApp Bot Service
+
+Debe exponer:
+
+- `GET /webhook/:slug`
+- `POST /webhook/:slug`
+
+Debe hacer:
+
+- validar slug
+- validar firma Meta
+- resolver tenant minimo
+- deduplicar con Redis
+- encolar mensaje
+- responder rapido
+
+No debe esperar LLM ni ejecutar workflows pesados.
+
+### Worker Service
+
+Debe procesar:
+
+- mensajes entrantes
+- retries de envio
+- reactivaciones
+- billing checks
+- notificaciones
+- jobs programados
+
+### AI Worker
+
+Debe procesar solo si el tenant tiene AI habilitada:
+
+- texto LLM
+- audio transcription
+- image analysis
+- embeddings futuros
+- workflows AI
+
+---
+
+## Queue architecture
+
+BullMQ es la opcion preferida.
+
+Colas sugeridas:
+
+| Cola | Proposito |
+| --- | --- |
+| `whatsapp.inbound` | mensajes entrantes desde webhooks |
+| `whatsapp.outbound` | envio/reintentos hacia Meta |
+| `ai.requests` | LLM, audio, imagen, embeddings |
+| `tenant.schedules` | reactivaciones, resumen diario, billing |
+| `maintenance` | backups, limpieza, metricas |
+
+Cada job debe incluir:
+
+- `tenantId`
+- `tenantSlug`
+- `allocationId`
+- `messageId` o idempotency key
+- payload minimo
+- trace/correlation id
+
+Redis debe manejar rate limit, locks e idempotencia. No usar memoria local para idempotencia en produccion multi-replica.
+
+---
+
+## Tenant resolution
+
+`TenantResolver` debe ser la unica entrada para convertir slug/token/user en `tenantContext`.
+
+Contrato sugerido:
+
+```js
+{
+  tenantId,
+  slug,
+  status,
+  plan,
+  subscriptionStatus,
+  dbAllocation: {
+    allocationId,
+    clusterId,
+    strategy,
+    tier,
+    databaseUrl,
+    databaseName,
+    schemaName,
+    poolMax
+  },
+  features: {
+    aiEnabled,
+    embeddingsEnabled,
+    workflowsEnabled
+  },
+  whatsapp: {
+    token,
+    phoneNumberId,
+    verifyToken,
+    metaLive
+  }
+}
+```
+
+Reglas:
+
+- Resolver metadata desde platform DB.
+- Cachear contexto en Redis con TTL corto.
+- Bust cache al cambiar configuracion o allocation.
+- No cargar productos, sesiones ni conversaciones dentro del resolver.
+- No devolver datos de otro tenant por fallback silencioso.
+
+---
+
+## Connection manager
+
+`ConnectionManager` debe cachear pools por `allocationId`, no por tenant.
+
+Reglas:
+
+- Small/medium tenants que comparten DB usan el mismo pool.
+- Dedicated tenants tienen pool propio.
+- Limite global de pools con LRU.
+- `poolMax` por allocation.
+- Cierre ordenado en shutdown.
+- Metricas: total, idle, waiting, eviction count.
+- No crear pool por request.
+- No crear pool por tenant small.
+
+Variables sugeridas:
 
 ```env
-# App
-NODE_ENV=production
-PORT=3000
-LOG_LEVEL=info
-
-# Base de datos
-DATABASE_URL=postgresql://app:PASSWORD@postgres:5432/whatsapp_saas
-DB_PASSWORD=PASSWORD            # mismo password del DATABASE_URL
-
-# Redis
-REDIS_URL=redis://redis:6379
-
-# Seguridad
-META_APP_SECRET=                # Secret de Meta App (HMAC webhook)
-ENCRYPTION_KEY=                 # AES-256 para wa_token (64 hex chars)
-APP_SECRET=                     # pgcrypto para tenant_whatsapp_config (min 32 chars)
-ADMIN_API_KEY=                  # Header X-Api-Key para /admin/*
-JWT_SECRET=                     # Firma tokens de tenant para /api/whatsapp/*
-
-# Demo
-DEMO_MODE=false
-DEMO_SLUG=demo-store
-DEMO_BUSINESS_NAME=Glamour Store (Demo)
-DEMO_OWNER_PHONE=573001234567
-DEMO_CITY=Bucaramanga
-DEMO_SCHEDULE=Lun-Sab 9am-7pm
-
-# Email (opcional — solo si SMTP_HOST está definido)
-# SMTP_HOST= SMTP_PORT= SMTP_USER= SMTP_PASS=
+PLATFORM_DATABASE_URL=postgresql://app:password@platform-postgres:5432/platform
+TENANT_DATABASE_URL_DEFAULT=postgresql://app:password@tenant-postgres-low:5432/tenant_shared_low
+TENANT_DB_POOL_MAX=10
+TENANT_DB_POOL_CACHE_MAX=20
+TENANT_DB_IDLE_TIMEOUT_MS=30000
+TENANT_DB_CONNECTION_TIMEOUT_MS=2000
 ```
 
 ---
 
-## Tests
+## Docker restructuring plan
+
+Servicios objetivo en Compose:
+
+- `nginx` o `traefik`
+- `api`
+- `whatsapp`
+- `worker`
+- `ai-worker` opcional, perfil `ai`
+- `redis`
+- `platform-postgres`
+- `tenant-postgres-low`
+- `tenant-postgres-medium` cuando haga falta
+- `backup`
+
+Requisitos:
+
+- red interna para servicios
+- exponer solo proxy
+- healthchecks en todos los servicios
+- restart policies
+- volumes persistentes por DB
+- resource limits por servicio
+- logs rotados
+- perfiles para AI y backups
+
+Ejemplo conceptual de limites:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: "0.75"
+      memory: 768M
+    reservations:
+      memory: 256M
+```
+
+En Compose no Swarm, usar tambien `mem_limit` y `cpus` si el entorno lo requiere.
+
+---
+
+## Database migration strategy
+
+Esta app no migra.
+
+Estrategia recomendada:
+
+1. Mantener schema management fuera del runtime.
+2. Usar un proceso controlado por el responsable de DB para aplicar cambios.
+3. Versionar SQL o Drizzle schema como referencia, pero no ejecutar `migrate` desde `api`, `whatsapp` ni `worker`.
+4. Para mover tenant:
+   - poner tenant en estado `migrating` o lock corto
+   - detener jobs nuevos de ese tenant
+   - copiar datos tenant-domain
+   - validar checksums/counts
+   - actualizar `tenant_db_allocations`
+   - bust Redis cache
+   - reactivar tenant
+
+El codigo debe estar preparado para que una migracion cambie `allocationId` sin deploy.
+
+---
+
+## Backup strategy
+
+Backups independientes:
+
+- platform DB
+- cada tenant shared DB
+- cada tenant dedicated DB
+
+Politica:
+
+- dump comprimido con `pg_dump`
+- nombre con db, fecha y tipo
+- retencion local corta
+- sync a Google Drive con rclone
+- pruebas periodicas de restore
+
+Ejemplo de estructura:
+
+```text
+backups/
+  platform/
+  tenants/shared-low/
+  tenants/shared-medium/
+  tenants/dedicated/{tenantSlug}/
+```
+
+Restore:
+
+- nunca restaurar encima de produccion sin snapshot previo
+- restaurar en DB temporal
+- validar conteos y smoke tests
+- cambiar allocation metadata si se restaura tenant dedicado
+
+---
+
+## Observability
+
+Preparar desde ahora:
+
+- logs JSON con `tenantId`, `tenantSlug`, `jobId`, `correlationId`, `allocationId`
+- `/metrics` Prometheus
+- metricas BullMQ por cola
+- errores con Sentry
+- trazas futuras con OpenTelemetry
+- Loki/Grafana para logs
+
+Metricas prioritarias:
+
+- webhook latency
+- enqueue latency
+- job duration
+- job failures/retries
+- Meta API failures
+- AI tokens/costo por tenant
+- DB pool waiting count por allocation
+- Redis latency
+
+---
+
+## Security concerns
+
+- Cifrar tokens Meta y URLs de DB dedicadas.
+- No loggear secrets, tokens, prompts completos con PII ni connection strings.
+- Validar slug antes de tocar DB.
+- HMAC Meta antes de aceptar webhooks.
+- Rate limit por IP, tenant y endpoint.
+- JWT con rotacion y expiracion.
+- Separar credenciales platform DB y tenant DB cuando sea posible.
+- Principle of least privilege en usuarios Postgres.
+- Backups cifrados o almacenados en ubicacion restringida.
+- Redis con password y solo red interna.
+- Bloquear tenant suspendido antes de procesar jobs.
+
+---
+
+## Cost optimization
+
+- Small tenants en DB compartida low-tier.
+- Medium tenants en shared medium solo cuando metricas lo justifiquen.
+- Dedicated DB solo para tenants grandes o con compliance.
+- AI apagada por defecto y activada por plan/feature flag.
+- Budget mensual de AI por tenant.
+- Respuestas deterministicas antes de LLM.
+- Cache de tenant context y config.
+- Pool caching por allocation, no por tenant.
+- Workers AI escalados solo cuando haya jobs.
+- Backups con retencion razonable segun criticidad.
+
+---
+
+## Folder structure sugerida
+
+```text
+src/
+  services/
+    api/
+      server.js
+      routes/
+    whatsapp/
+      server.js
+      webhooks/
+      ingestion/
+    worker/
+      index.js
+      processors/
+      schedules/
+    ai-worker/
+      index.js
+      processors/
+  platform/
+    database/
+    tenancy/
+    billing/
+    auth/
+  tenant/
+    database/
+    repositories/
+    services/
+  queues/
+    bullmq.js
+    names.js
+    producers/
+  integrations/
+    whatsapp/
+    anthropic/
+    openai/
+  observability/
+    logger.js
+    metrics.js
+  config/
+    env.js
+```
+
+Mantener compatibilidad temporal con carpetas actuales mientras se migra modulo por modulo.
+
+---
+
+## Step-by-step implementation order
+
+1. Actualizar documentacion y eliminar instrucciones de migracion desde la app.
+2. Agregar variables `PLATFORM_DATABASE_URL` y `TENANT_DATABASE_URL_DEFAULT`.
+3. Cambiar `platformDb` para usar pool propio de plataforma.
+4. Crear adaptadores tenant-aware para sesiones, catalogo y orders.
+5. Reemplazar usos tenant-domain de `getDb()` por `getDbForTenant(tenantContext)`.
+6. Introducir BullMQ y cola `whatsapp.inbound`.
+7. Cambiar webhook POST para encolar y responder 200.
+8. Crear worker de mensajes con el flujo actual.
+9. Mover idempotencia a Redis.
+10. Mover schedules a worker.
+11. Convertir AI en job asincrono con feature flag.
+12. Separar entrypoints Docker: `api`, `whatsapp`, `worker`, `ai-worker`.
+13. Agregar resource limits, healthchecks y logs rotados.
+14. Agregar backup service con rclone.
+15. Agregar metricas por cola, pool y tenant.
+16. Ejecutar migracion operativa de tenants small/medium/dedicated fuera de la app.
+
+---
+
+## Comandos permitidos en esta app
+
+Desarrollo:
 
 ```bash
-npm run test:unit                                         # todos los unitarios
-jest tests/unit/tenants/configRepository.test.js         # solo el repository
+npm run dev
+npm start
+npm test
+npm run test:unit
+npm run test:integration
 ```
 
-Convenciones:
-- Mock de `db.js` y `redis.js` en tests unitarios con `jest.mock()`
-- `--forceExit` siempre (timers del server.js mantienen el proceso vivo)
-- `NODE_ENV=test` desactiva DB real y tareas periódicas
-
-Tests pendientes (aún no escritos):
-- `src/webhooks/verifier.js` — HMAC válido e inválido
-- `src/core/whatsapp/parser.js`
-- `src/core/catalog.js`
-- `src/core/state/manager.js`
-- `src/core/flow-engine/steps/menu.js`
-- Integration test del webhook con slug
-
----
-
-## Agregar un nuevo cliente
+Docker:
 
 ```bash
-# 1. Crear el tenant en la BD
-node scripts/create-tenant.js \
-  --slug=nueva-tienda \
-  --name="Nueva Tienda" \
-  --wa-token=EAAxxxxx \
-  --phone-id=PHONE_NUMBER_ID \
-  --verify-token=TOKEN \
-  --owner-phone=573001234567
-
-# 2. Registrar la URL en Meta Business:
-#    https://bots.jesttech.com/webhook/nueva-tienda
-#
-# No hay que reiniciar el servidor. El loader.js carga el
-# nuevo tenant automáticamente en el primer mensaje entrante.
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
----
-
-## Estado del proyecto
-
-| Qué | Estado |
-|-----|--------|
-| Código base completo | ✅ |
-| Redis + caché por tenant | ✅ |
-| JWT auth + rate limiting | ✅ |
-| Tests (175 — unit + integration) | ✅ |
-| /metrics protegido por ADMIN_API_KEY | ✅ |
-| Redis con contraseña (REDIS_PASSWORD) | ✅ |
-| nginx con envsubst template (${DOMAIN}) | ✅ |
-| validateEnv — PANEL_JWT/REFRESH_SECRET validados al arranque | ✅ |
-| SQL injection fix en configRepository | ✅ |
-| drizzle/db.js null guard para pool | ✅ |
-| Entorno Docker dev | ✅ |
-| docker-compose.prod.yml | ✅ |
-| Base de datos en VPS | Pendiente |
-| Migrations corridas | Pendiente |
-| Redis en VPS | Pendiente |
-| SSL / nginx (cert Certbot) | Pendiente |
-| cliente1 migrado a la nueva BD | Pendiente |
-| Deploy en VPS | Pendiente |
+No documentar ni ejecutar comandos de migracion desde esta aplicacion.

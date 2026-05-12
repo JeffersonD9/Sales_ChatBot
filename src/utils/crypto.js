@@ -7,9 +7,8 @@
  * Formato nuevo (GCM):  "{iv_hex}:{authTag_hex}:{cipher_hex}"  — 3 partes
  * Formato legado (CBC): "{iv_hex}:{cipher_hex}"                — 2 partes
  *
- * decrypt() detecta el formato automáticamente para permitir migración
- * gradual. encrypt() siempre produce GCM. Una vez corrido el script
- * scripts/migrate-crypto.js, todos los valores serán GCM.
+ * decrypt() detecta el formato automaticamente para permitir compatibilidad
+ * temporal con tokens antiguos. encrypt() siempre produce GCM.
  */
 
 const { createCipheriv, createDecipheriv, randomBytes } = require('crypto');

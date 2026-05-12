@@ -1,15 +1,20 @@
 {
   "name": "whatsapp-saas",
   "version": "1.0.0",
+  "type": "module",
   "description": "Plataforma SaaS multitenant de bots de ventas WhatsApp — Jest Tech Solutions",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "migrate": "drizzle-kit migrate",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio",
+    "start:api": "node src/services/api/server.js",
+    "dev:api": "nodemon src/services/api/server.js",
+    "start:whatsapp": "node src/services/whatsapp/server.js",
+    "dev:whatsapp": "nodemon src/services/whatsapp/server.js",
+    "start:worker": "node src/services/worker/index.js",
+    "dev:worker": "nodemon src/services/worker/index.js",
+    "start:ai-worker": "node src/services/ai-worker/index.js",
+    "dev:ai-worker": "nodemon src/services/ai-worker/index.js",
     "import-products": "node scripts/import-products.js",
     "test": "jest --forceExit",
     "test:watch": "jest --watch --forceExit",
@@ -29,6 +34,7 @@
     "@anthropic-ai/sdk": "^0.92.0",
     "axios": "^1.7.2",
     "bcrypt": "^6.0.0",
+    "bullmq": "^5.76.7",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.2",
@@ -43,7 +49,6 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.10",
     "jest": "^29.7.0",
     "nodemon": "^3.1.0",
     "supertest": "^7.0.0"

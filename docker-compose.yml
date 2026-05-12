@@ -1,51 +1,11 @@
-# ══════════════════════════════════════════════════════
-#  docker-compose.yml — Servicios de infraestructura base
+# Base compose for the bot runtime.
 #
-#  Este archivo define SOLO los servicios compartidos entre
-#  development y production: PostgreSQL y Redis.
-#
-#  Para levantar entornos:
-#    Development:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-#    Production:   docker compose -f docker-compose.yml -f docker-compose.prod.yml up
-# ══════════════════════════════════════════════════════
+# This project does not own database or Redis containers.
+# PostgreSQL/MySQL, Redis and backups are external infrastructure and must be
+# provided through environment variables such as DATABASE_URL, REDIS_URL,
+# PLATFORM_DATABASE_URL and tenant DB allocation URLs.
 
-services:
-
-  # ── Base de datos ──────────────────────────────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
-    container_name: whatsapp-saas-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: whatsapp_saas
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d whatsapp_saas"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── Cache ──────────────────────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: whatsapp-saas-redis
-    restart: unless-stopped
-    command: redis-server --save "" --appendonly no --requirepass ${REDIS_PASSWORD}
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:
+services: {}
 
 networks:
   internal:

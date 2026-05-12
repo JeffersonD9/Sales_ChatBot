@@ -1,59 +1,147 @@
-# ══════════════════════════════════════════════════════
-#  docker-compose.dev.yml — Override de desarrollo
+# Development override.
 #
-#  Extiende docker-compose.yml (base) con:
-#    - App con hot reload (nodemon via stage dev del Dockerfile)
-#    - Código fuente montado como volumen (cambios en vivo)
-#    - Puerto 3000 expuesto directamente (sin nginx)
-#    - Puerto 5432 expuesto para conectar desde DBeaver/TablePlus
-#    - Puerto 6379 expuesto para inspeccionar Redis con redis-cli
+# Default dev topology is split by boundary:
+#   api       -> http://localhost:3000
+#   whatsapp  -> http://localhost:3001/webhook/{slug}
+#   worker    -> BullMQ consumer and schedules
 #
-#  Levantar:
-#    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# External dependencies:
+#   DATABASE_URL / PLATFORM_DATABASE_URL / tenant DB URLs
+#   REDIS_URL
 #
-#  Alias recomendado (agregar a .bashrc o .zshrc):
-#    alias dcdev="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
-#
-#  Comandos comunes:
-#    dcdev up -d                          # levantar en background
-#    dcdev logs -f app                    # ver logs del bot
-#    dcdev exec app npm run migrate       # correr migrations
-#    dcdev exec app node scripts/create-tenant.js --slug=demo ...
-#    dcdev down                           # apagar todo
-#    dcdev down -v                        # apagar + borrar volumes (reset total)
-# ══════════════════════════════════════════════════════
+# Optional profiles:
+#   --profile ai      starts ai-worker
+#   --profile legacy  starts the old single-process app on localhost:3002
 
 services:
+  api:
+    build:
+      context: .
+      target: dev
+    image: jesttech/whatsapp-saas:dev
+    container_name: whatsapp-saas-api-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:api"]
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      API_PORT: 3000
+      HEALTHCHECK_PORT: 3000
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const p=process.env.HEALTHCHECK_PORT||3000;require('http').get('http://localhost:'+p+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - internal
 
-  # ── Aplicación (hot reload) ────────────────────────────────────────────────
+  whatsapp:
+    build:
+      context: .
+      target: dev
+    image: jesttech/whatsapp-saas:dev
+    container_name: whatsapp-saas-whatsapp-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:whatsapp"]
+    ports:
+      - "3001:3001"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      WHATSAPP_PORT: 3001
+      HEALTHCHECK_PORT: 3001
+      QUEUE_MODE: bullmq
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const p=process.env.HEALTHCHECK_PORT||3001;require('http').get('http://localhost:'+p+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - internal
+
+  worker:
+    build:
+      context: .
+      target: dev
+    image: jesttech/whatsapp-saas:dev
+    container_name: whatsapp-saas-worker-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:worker"]
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      QUEUE_MODE: bullmq
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('dotenv').config();require('./src/utils/validateEnv').validateEnv()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - internal
+
+  ai-worker:
+    build:
+      context: .
+      target: dev
+    image: jesttech/whatsapp-saas:dev
+    container_name: whatsapp-saas-ai-worker-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:ai-worker"]
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      AI_QUEUE_MODE: bullmq
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('dotenv').config();require('./src/utils/validateEnv').validateEnv()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    profiles:
+      - ai
+    networks:
+      - internal
+
   app:
     build:
       context: .
-      target: dev                          # usa el stage dev del Dockerfile
+      target: dev
     image: jesttech/whatsapp-saas:dev
     container_name: whatsapp-saas-app-dev
     restart: unless-stopped
     ports:
-      - "3000:3000"                        # acceso directo sin nginx
+      - "3002:3000"
     env_file: .env
     environment:
       NODE_ENV: development
+      HEALTHCHECK_PORT: 3000
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const p=process.env.HEALTHCHECK_PORT||3000;require('http').get('http://localhost:'+p+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     volumes:
-      - .:/app                             # código fuente en vivo
-      - /app/node_modules                  # proteger node_modules del contenedor
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - .:/app
+      - /app/node_modules
+    profiles:
+      - legacy
     networks:
       - internal
-
-  # ── Exponer puertos de infra para herramientas locales ─────────────────────
-  postgres:
-    ports:
-      - "5432:5432"                        # DBeaver / TablePlus / psql
-
-  redis:
-    ports:
-      - "6379:6379"                        # redis-cli / RedisInsight

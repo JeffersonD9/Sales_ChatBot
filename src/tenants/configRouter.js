@@ -1,15 +1,14 @@
 'use strict';
 
-// Rutas REST de configuración del bot por tenant — montado en /api/whatsapp
-const express    = require('express');
+const express = require('express');
 const botService = require('../core/botService');
-const configRepo = require('./configRepository');
-const { requireTenantAuth, tenantRateLimit } = require('./authMiddleware');
+const configRepo = require('../tenant/repositories/whatsappConfigRepository');
+const { requireTenantAuth, tenantRateLimit } = require('../platform/auth/tenantAuthMiddleware');
 const { securityHeaders } = require('../middleware/security');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
-router.use(securityHeaders());   // API_CSP por defecto
+router.use(securityHeaders());
 router.use(requireTenantAuth);
 router.use(tenantRateLimit);
 
@@ -27,10 +26,10 @@ router.get('/config', async (req, res) => {
     const config = await configRepo.getConfig(req.tenantId);
     if (!config) return res.status(404).json({ ok: false, error: 'Config no encontrada' });
     const { tenant_id, bot_config, is_active, created_at, updated_at } = config;
-    res.json({ ok: true, data: { tenant_id, bot_config, is_active, created_at, updated_at } });
+    return res.json({ ok: true, data: { tenant_id, bot_config, is_active, created_at, updated_at } });
   } catch (err) {
     logger.error({ tenantId: req.tenantId, err: err.message }, '[ConfigRouter] GET error');
-    res.status(500).json({ ok: false, error: 'Error interno' });
+    return res.status(500).json({ ok: false, error: 'Error interno' });
   }
 });
 
@@ -43,15 +42,19 @@ router.put('/config', async (req, res) => {
     const updated = await botService.updateBotConfig(req.tenantId, {
       session_data, bot_config, webhook_secret, is_active,
     });
-    res.json({
+    return res.json({
       ok: true,
-      data: { tenant_id: updated.tenant_id, bot_config: updated.bot_config,
-              is_active: updated.is_active, updated_at: updated.updated_at },
+      data: {
+        tenant_id: updated.tenant_id,
+        bot_config: updated.bot_config,
+        is_active: updated.is_active,
+        updated_at: updated.updated_at,
+      },
     });
   } catch (err) {
-    const isValidation = err.message.startsWith('bot_config inválido');
+    const isValidation = err.message.startsWith('bot_config invalido') || err.message.startsWith('bot_config inválido');
     logger.warn({ tenantId: req.tenantId, err: err.message }, '[ConfigRouter] PUT error');
-    res.status(isValidation ? 400 : 500).json({
+    return res.status(isValidation ? 400 : 500).json({
       ok: false,
       error: isValidation ? err.message : 'Error interno',
     });
@@ -62,10 +65,10 @@ router.delete('/config', async (req, res) => {
   try {
     const deleted = await configRepo.deleteConfig(req.tenantId);
     if (!deleted) return res.status(404).json({ ok: false, error: 'Config no encontrada' });
-    res.json({ ok: true, data: { deleted: true } });
+    return res.json({ ok: true, data: { deleted: true } });
   } catch (err) {
     logger.error({ tenantId: req.tenantId, err: err.message }, '[ConfigRouter] DELETE error');
-    res.status(500).json({ ok: false, error: 'Error interno' });
+    return res.status(500).json({ ok: false, error: 'Error interno' });
   }
 });
 

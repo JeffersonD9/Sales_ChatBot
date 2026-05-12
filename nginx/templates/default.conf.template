@@ -1,7 +1,3 @@
-# nginx/templates/default.conf.template
-# Procesado automáticamente por el entrypoint del contenedor nginx oficial.
-# La variable ${DOMAIN} se sustituye con el valor del env var DOMAIN al arrancar.
-
 events {
   worker_connections 1024;
 }
@@ -28,7 +24,6 @@ http {
   access_log /var/log/nginx/access.log main;
   error_log  /var/log/nginx/error.log warn;
 
-  # ── HTTP — solo para ACME challenge y redirect a HTTPS ────────────────────
   server {
     listen 80;
     server_name _;
@@ -38,7 +33,7 @@ http {
     }
 
     location = /health {
-      proxy_pass http://app:3000;
+      proxy_pass http://api:3000;
       proxy_set_header Host $host;
     }
 
@@ -47,7 +42,6 @@ http {
     }
   }
 
-  # ── HTTPS ─────────────────────────────────────────────────────────────────
   server {
     listen 443 ssl;
     http2 on;
@@ -63,7 +57,7 @@ http {
 
     location ~ ^/webhook/[a-z0-9-]+$ {
       limit_req zone=webhook burst=50 nodelay;
-      proxy_pass http://app:3000;
+      proxy_pass http://whatsapp:3001;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -72,42 +66,8 @@ http {
       proxy_connect_timeout 5s;
     }
 
-    location /admin/ {
-      # Descomentar para restringir por IP:
-      # allow YOUR.STATIC.IP;
-      # deny all;
-      proxy_pass http://app:3000;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_read_timeout 30s;
-    }
-
-    location /panel/ {
-      # Descomentar para restringir por IP:
-      # allow YOUR.STATIC.IP;
-      # deny all;
-      proxy_pass http://app:3000;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto https;
-      proxy_read_timeout 30s;
-    }
-
-    location /panel-ui/ {
-      proxy_pass http://app:3000;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_read_timeout 10s;
-    }
-
-    # /metrics — bloqueado externamente; solo accesible desde red interna o con X-Api-Key
-    location /metrics {
-      deny all;
-    }
-
     location / {
-      proxy_pass http://app:3000;
+      proxy_pass http://api:3000;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

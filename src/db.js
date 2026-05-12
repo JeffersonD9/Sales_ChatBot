@@ -6,6 +6,7 @@
 
 const { Pool } = require('pg');
 const { logger } = require('./utils/logger');
+const { getPlatformDatabaseUrl } = require('./config/infra');
 
 let pool = null;
 
@@ -16,11 +17,17 @@ function getPool() {
     return null; // sin DB en demo/test
   }
 
+  const connectionString = getPlatformDatabaseUrl();
+  if (!connectionString) {
+    throw new Error('Platform DB URL no configurada');
+  }
+
   pool = new Pool({
-    connectionString:        process.env.DATABASE_URL,
-    max:                     20,
-    idleTimeoutMillis:       30000,
-    connectionTimeoutMillis: 2000,
+    connectionString,
+    max:                     parseInt(process.env.PLATFORM_DB_POOL_MAX || '20', 10),
+    idleTimeoutMillis:       parseInt(process.env.PLATFORM_DB_IDLE_TIMEOUT_MS || '30000', 10),
+    connectionTimeoutMillis: parseInt(process.env.PLATFORM_DB_CONNECTION_TIMEOUT_MS || '2000', 10),
+    application_name:        process.env.PLATFORM_DB_APPLICATION_NAME || 'whatsapp-saas:platform',
   });
 
   pool.on('error', (err) => {

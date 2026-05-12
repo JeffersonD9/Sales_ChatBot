@@ -20,12 +20,12 @@ validateEnv();
 const app                    = require('./app');
 const { closePool }          = require('./db');
 const { closeRedis }         = require('./redis');
+const { closeTenantPools }   = require('./platform/database/connectionManager');
 const { checkReactivations }   = require('./core/flow-engine/engine');
-const { checkBillingCycle }    = require('./billing/billingService');
+const { checkBillingCycle }    = require('./platform/billing/billingService');
 const { startScheduler }       = require('./core/scheduler');
 const { getActiveSessions, saveState } = require('./core/state/manager');
-const { cleanExpiredSessions } = require('./panel/auth/service');
-const tenantLoader             = require('./tenants/loader');
+const tenantLoader             = require('./platform/tenancy/loader');
 
 // Calcula milisegundos hasta la proxima ocurrencia de `hour:00`
 function msUntilHour(hour) {
@@ -47,13 +47,6 @@ if (process.env.NODE_ENV !== 'test') {
     );
     setTimeout(runBillingCheck, 24 * 60 * 60 * 1000);
   }, msUntilHour(8));
-
-  // Limpieza de sesiones del panel expiradas — cada hora
-  setInterval(() => {
-    cleanExpiredSessions().catch((err) =>
-      logger.error({ err: err.message }, '[Server] Error limpiando sesiones panel')
-    );
-  }, 60 * 60 * 1000);
 
   // Premium IA: cart recovery + resumen diario
   startScheduler();
@@ -88,7 +81,8 @@ const server = app.listen(PORT, () => {
 function shutdown(signal) {
   logger.info({ signal }, '[Server] Apagando servidor...');
   server.close(async () => {
-    await Promise.allSettled([closePool(), closeRedis()]);
+    const { closeBullMQ } = await import('./queues/bullmqQueue.js');
+    await Promise.allSettled([closeBullMQ(), closeTenantPools(), closePool(), closeRedis()]);
     logger.info('[Server] Conexiones cerradas. Adios!');
     process.exit(0);
   });

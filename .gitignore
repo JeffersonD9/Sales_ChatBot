@@ -40,9 +40,19 @@ redisdata/
 
 # Tests
 tests/
+!tests/
+tests/*
+!tests/package.json
 
 # Docs internos
 docs/
+!docs/
+docs/*
+!docs/architecture/
+docs/architecture/*
+!docs/architecture/folder-structure.md
+!docs/architecture/module-system.md
+!docs/architecture/docker-topology.md
 API_TEST_REPORT.md
 ARCHITECTURE.md
 

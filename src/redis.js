@@ -3,6 +3,7 @@
 // Cliente Redis singleton — mismo patrón que db.js
 const Redis      = require('ioredis');
 const { logger } = require('./utils/logger');
+const { getRedisConnectionOptions, getRedisUrl } = require('./config/infra');
 
 let client = null;
 
@@ -10,10 +11,10 @@ function getRedis() {
   if (client) return client;
   if (process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test') return null;
 
-  client = new Redis(process.env.REDIS_URL, {
-    retryStrategy: (times) => (times > 5 ? null : Math.min(times * 200, 2000)),
-    enableOfflineQueue: false,
-  });
+  const redisUrl = getRedisUrl();
+  if (!redisUrl) return null;
+
+  client = new Redis(redisUrl, getRedisConnectionOptions());
 
   client.on('connect', () => logger.info('[Redis] Conectado'));
   client.on('error',   (err) => logger.error({ err: err.message }, '[Redis] Error'));

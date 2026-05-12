@@ -1,30 +1,18 @@
 'use strict';
 
-/**
- * core/scheduler.js — Tareas programadas del Plan Premium IA
- *
- * Feature 4: Recuperación de carritos abandonados (diario a las 9am UTC)
- * Feature 5: Resumen diario de métricas para el dueño (diario a las 8pm UTC)
- *
- * Solo actúa sobre tenants con plan 'premium' o 'enterprise' activos.
- * Patrón: setTimeout anidado (sin node-cron) igual que server.js.
- */
-
-const { query }    = require('../db');
-const { sendText } = require('./whatsapp/sender');
-const { logger }   = require('../utils/logger');
+const { query } = require('../db');
+const { sendText } = require('../integrations/whatsapp/sender');
+const { logger } = require('../utils/logger');
 
 const PREMIUM_PLANS = ['premium', 'enterprise'];
 
 function msUntilHour(hour) {
-  const now  = new Date();
+  const now = new Date();
   const next = new Date();
   next.setHours(hour, 0, 0, 0);
   if (next <= now) next.setDate(next.getDate() + 1);
   return next - now;
 }
-
-// ── Feature 4: Cart Recovery ──────────────────────────────────────────────────
 
 async function runCartRecovery() {
   try {
@@ -49,13 +37,13 @@ async function runCartRecovery() {
     for (const row of res.rows) {
       try {
         const waToken = decrypt(row.wa_token_encrypted);
-        const tenant  = { ...row, wa_token: waToken };
-        const nombre  = row.data?.name || null;
-        const saludo  = nombre ? `Hola ${nombre} 👋` : 'Hola 👋';
+        const tenant = { ...row, wa_token: waToken };
+        const nombre = row.data?.name || null;
+        const saludo = nombre ? `Hola ${nombre}` : 'Hola';
 
         await sendText(row.wa_from,
           `${saludo} Vimos que te quedaste a un paso de completar tu pedido. ` +
-          `¿Quieres que te ayudemos a terminarlo? Escríbenos cuando quieras 🛍️`,
+          'Quieres que te ayudemos a terminarlo? Escribenos cuando quieras.',
           tenant
         );
 
@@ -76,8 +64,6 @@ async function runCartRecovery() {
     logger.error({ err: err.message }, '[Scheduler] Error en cart recovery');
   }
 }
-
-// ── Feature 5: Daily Summary ──────────────────────────────────────────────────
 
 async function runDailySummary() {
   try {
@@ -112,23 +98,21 @@ async function runDailySummary() {
         `, [row.id]);
 
         const s = statsRes.rows[0];
-        const nuevas      = parseInt(s.nuevas_conversaciones,  10) || 0;
-        const pedidos     = parseInt(s.pedidos_completados,    10) || 0;
-        const recuperados = parseInt(s.carritos_recuperados,   10) || 0;
+        const nuevas = parseInt(s.nuevas_conversaciones, 10) || 0;
+        const pedidos = parseInt(s.pedidos_completados, 10) || 0;
+        const recuperados = parseInt(s.carritos_recuperados, 10) || 0;
 
-        // Sin actividad del día → no enviar para evitar spam
         if (nuevas === 0 && pedidos === 0) continue;
 
         const storeName = row.bot_config?.business_name || row.name;
-        const waToken   = decrypt(row.wa_token_encrypted);
-        const tenant    = { ...row, wa_token: waToken };
+        const waToken = decrypt(row.wa_token_encrypted);
+        const tenant = { ...row, wa_token: waToken };
 
         await sendText(row.owner_phone,
-          `📊 *Resumen del día — ${storeName}*\n\n` +
-          `• Conversaciones nuevas: ${nuevas}\n` +
-          `• Pedidos completados: ${pedidos}\n` +
-          `• Carritos recuperados: ${recuperados}\n\n` +
-          `¡Hasta mañana! 🚀`,
+          `Resumen del dia - ${storeName}\n\n` +
+          `Conversaciones nuevas: ${nuevas}\n` +
+          `Pedidos completados: ${pedidos}\n` +
+          `Carritos recuperados: ${recuperados}`,
           tenant
         );
 
@@ -142,15 +126,9 @@ async function runDailySummary() {
   }
 }
 
-// ── Arranque ──────────────────────────────────────────────────────────────────
-
-/**
- * Registra las dos tareas periódicas del Plan Premium IA.
- * Llamar desde server.js solo cuando NODE_ENV !== 'test'.
- */
 function startScheduler() {
-  const recoveryHour = parseInt(process.env.CART_RECOVERY_HOUR  || '9',  10);
-  const summaryHour  = parseInt(process.env.DAILY_SUMMARY_HOUR  || '20', 10);
+  const recoveryHour = parseInt(process.env.CART_RECOVERY_HOUR || '9', 10);
+  const summaryHour = parseInt(process.env.DAILY_SUMMARY_HOUR || '20', 10);
 
   setTimeout(function runRecovery() {
     runCartRecovery();

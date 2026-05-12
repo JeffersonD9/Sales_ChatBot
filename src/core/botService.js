@@ -1,7 +1,7 @@
 'use strict';
 
 // Lógica del bot por tenant: procesar mensajes, init y actualizar config
-const { getConfig, saveConfig } = require('../tenants/configRepository');
+const { getConfig, saveConfig } = require('../tenant/repositories/whatsappConfigRepository');
 const { sendText }              = require('./whatsapp/sender');
 const { notifyAdvisorRequest }  = require('../notifications/notifier');
 const { query }                 = require('../db');

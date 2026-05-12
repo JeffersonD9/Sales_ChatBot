@@ -45,7 +45,7 @@ function _getClient() {
  * @param {object} tenant   - Config del tenant (products, bot_config, slug, plan)
  * @returns {Promise<string|null>}
  */
-async function handleWithAI(phone, text, session, tenant) {
+async function handleWithAILocally(phone, text, session, tenant) {
   if (process.env.AI_ENABLED === 'false') return null;
 
   const client = _getClient();
@@ -99,9 +99,51 @@ async function handleWithAI(phone, text, session, tenant) {
   }
 }
 
+async function handleWithAIQueued(phone, text, session, tenant) {
+  const { enqueueAIRequest } = await import('../../queues/producers/aiRequestsProducer.js');
+  const { getQueueEvents } = await import('../../queues/bullmqQueue.js');
+  const { QUEUES } = await import('../../queues/names.js');
+
+  const job = await enqueueAIRequest({
+    phone,
+    text,
+    session,
+    tenant,
+    requestedAt: new Date().toISOString(),
+  });
+
+  const timeout = parseInt(process.env.AI_QUEUE_TIMEOUT_MS || '25000', 10);
+  const result = await job.waitUntilFinished(getQueueEvents(QUEUES.AI_REQUESTS), timeout);
+
+  if (session.data && Array.isArray(result?.aiHistory)) {
+    session.data.aiHistory = result.aiHistory;
+  }
+
+  return result?.reply || null;
+}
+
+async function handleWithAI(phone, text, session, tenant) {
+  const aiQueueMode = (process.env.AI_QUEUE_MODE || 'direct').toLowerCase();
+  const aiBullMQMode = aiQueueMode === 'bullmq' || aiQueueMode === 'redis';
+
+  if (aiBullMQMode) {
+    try {
+      return await handleWithAIQueued(phone, text, session, tenant);
+    } catch (err) {
+      logger.warn(
+        { phone, tenantSlug: tenant.slug, err: err.message },
+        '[AI] Error en cola ai.requests - usando fallback'
+      );
+      return null;
+    }
+  }
+
+  return handleWithAILocally(phone, text, session, tenant);
+}
+
 /** Solo para uso en tests — resetea el singleton del cliente. */
 function _resetClientForTest() {
   _client = null;
 }
 
-module.exports = { handleWithAI, _resetClientForTest };
+module.exports = { handleWithAI, handleWithAILocally, _resetClientForTest };
