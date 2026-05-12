@@ -1,16 +1,14 @@
 import express from 'express';
 import { rawBodyCapture } from './webhooks/verifier.js';
 import webhookRouter from './webhooks/router.js';
-import metricsRouter from '../../metrics.js';
+import metricsRouter from '../../observability/metrics.js';
 import dbModule from '../../db.js';
-import healthModule from '../../observability/health.js';
+import { getServiceHealth } from '../../observability/health.js';
 import loggerModule from '../../utils/logger.js';
-import securityModule from '../../middleware/security.js';
+import { securityHeaders } from '../../middleware/security.js';
 
 const { isDbConnectionError } = dbModule;
-const { getServiceHealth } = healthModule;
 const { logger } = loggerModule;
-const { securityHeaders } = securityModule;
 
 const app = express();
 

@@ -1,7 +1,8 @@
-'use strict';
+import redisModule from '../redis.js';
+import loggerModule from '../utils/logger.js';
 
-const { getRedis } = require('../redis');
-const { logger } = require('../utils/logger');
+const { getRedis } = redisModule;
+const { logger } = loggerModule;
 
 const rateLimitMemory = new Map();
 const API_CSP = "default-src 'none'; frame-ancestors 'none'";
@@ -29,7 +30,7 @@ async function redisIncr(key, windowSec) {
   }
 }
 
-function ipRateLimit({ prefix, max, windowSec = 60 }) {
+export function ipRateLimit({ prefix, max, windowSec = 60 }) {
   return async (req, res, next) => {
     const ip = getIp(req);
     const window = Math.floor(Date.now() / (windowSec * 1000));
@@ -52,7 +53,7 @@ function ipRateLimit({ prefix, max, windowSec = 60 }) {
   };
 }
 
-function securityHeaders({ csp = API_CSP } = {}) {
+export function securityHeaders({ csp = API_CSP } = {}) {
   return (_req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('X-Frame-Options', 'DENY');
@@ -72,7 +73,7 @@ function securityHeaders({ csp = API_CSP } = {}) {
 
 securityHeaders.API_CSP = API_CSP;
 
-function validateSlug(req, res, next) {
+export function validateSlug(req, res, next) {
   const { slug } = req.params;
   if (!slug || !SLUG_RE.test(slug)) {
     logger.warn({ slug, ip: getIp(req), path: req.path }, '[Security] Slug invalido rechazado');
@@ -80,9 +81,3 @@ function validateSlug(req, res, next) {
   }
   return next();
 }
-
-module.exports = {
-  ipRateLimit,
-  securityHeaders,
-  validateSlug,
-};

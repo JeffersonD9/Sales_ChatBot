@@ -1,12 +1,11 @@
 import express from 'express';
 import { verifyMetaSignature } from './verifier.js';
-import tenantLoader from '../../../tenants/loader.js';
+import tenantLoader from '../../../platform/tenancy/loader.js';
 import loggerModule from '../../../utils/logger.js';
-import securityModule from '../../../middleware/security.js';
+import { validateSlug, ipRateLimit } from '../../../middleware/security.js';
 import { dispatch } from '../ingestion/dispatcher.js';
 
 const { logger } = loggerModule;
-const { validateSlug, ipRateLimit } = securityModule;
 
 const router = express.Router({ mergeParams: true });
 

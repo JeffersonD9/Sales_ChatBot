@@ -1,9 +1,12 @@
-'use strict';
+import platformDbModule from '../platform/database/platformDb.js';
+import connectionManagerModule from '../platform/database/connectionManager.js';
+import redisModule from '../redis.js';
+import infraModule from '../config/infra.js';
 
-const { platformHealthCheck } = require('../platform/database/platformDb');
-const { getDefaultTenantAllocation } = require('../platform/database/connectionManager');
-const { redisHealthCheck } = require('../redis');
-const { isDemoOrTest, isRedisRequired } = require('../config/infra');
+const { platformHealthCheck } = platformDbModule;
+const { getDefaultTenantAllocation } = connectionManagerModule;
+const { redisHealthCheck } = redisModule;
+const { isDemoOrTest, isRedisRequired } = infraModule;
 
 async function optionalTenantDbHealthCheck() {
   const allocation = getDefaultTenantAllocation();
@@ -17,7 +20,7 @@ async function optionalTenantDbHealthCheck() {
   };
 }
 
-async function getServiceHealth(service, extras = {}) {
+export async function getServiceHealth(service, extras = {}) {
   const demo = isDemoOrTest();
   const redisRequired = isRedisRequired();
   const [platformDbOk, redisOk, tenantDefault] = await Promise.all([
@@ -47,5 +50,3 @@ async function getServiceHealth(service, extras = {}) {
     ...extras,
   };
 }
-
-module.exports = { getServiceHealth };

@@ -2,7 +2,7 @@
 
 WhatsApp Sales Agent SaaS multi-tenant. La arquitectura objetivo separa plataforma, WhatsApp, workers y bases de datos de tenants para poder crecer desde un MVP sencillo hasta tenants dedicados sin reescribir el producto.
 
-Regla critica: esta aplicacion no ejecuta migraciones. La base de datos vive dentro del proyecto/infra, pero el schema se administra fuera del runtime de la app. Aqui solo se hacen consultas, inserts, updates, deletes y operaciones normales de producto. La conexion se configura por variables de entorno.
+Regla critica: esta aplicacion no ejecuta migraciones. Las bases de datos y Redis viven fuera de este repo, y el schema se administra fuera del runtime de la app. Aqui solo se hacen consultas, inserts, updates, deletes y operaciones normales de producto. La conexion se configura por variables de entorno.
 
 ---
 
@@ -20,7 +20,7 @@ Regla critica: esta aplicacion no ejecuta migraciones. La base de datos vive den
 | PostgreSQL | platform DB y tenant DBs compartidas o dedicadas |
 | Reverse proxy | Nginx o Traefik |
 
-El MVP puede seguir corriendo como un solo proceso mientras se extraen boundaries internos. La meta no es Kubernetes; la meta es Docker Compose bien separado y facil de operar.
+El runtime operativo corre por boundaries separados. La meta no es Kubernetes; la meta es Docker Compose bien separado y facil de operar.
 
 ---
 
@@ -72,7 +72,7 @@ Durante la transicion puede existir una DB compartida inicial, pero el codigo de
 
 ### Lo que ya existe y conviene conservar
 
-- Express esta separado en `src/app.js` y `src/server.js`.
+- Express esta separado por servicios en `src/services/api` y `src/services/whatsapp`.
 - Redis ya existe como dependencia operativa.
 - Webhook responde 200 rapido y procesa luego con `setImmediate`.
 - Hay `TenantResolver` en `src/platform/tenancy/tenantResolver.js`.
@@ -80,21 +80,21 @@ Durante la transicion puede existir una DB compartida inicial, pero el codigo de
 - Hay `tenant_db_allocations` y `db_clusters` en `src/drizzle/schema.js`.
 - El codigo usa Drizzle y consultas parametrizadas en varias zonas.
 - Hay logging con Pino y endpoint `/metrics`.
-- Hay healthchecks en compose para postgres y redis.
+- Hay healthchecks en compose para los servicios de app; DB y Redis se verifican como dependencias externas.
 
 ### Bottlenecks actuales
 
 - `src/db.js` sigue siendo un pool singleton global.
 - `src/drizzle/db.js` crea un singleton Drizzle global.
 - `state/manager.js` lee y guarda sesiones contra el pool global.
-- `configRepository.js`, `scheduler.js`, billing y partes admin siguen asumiendo DB unica.
+- Partes de `core`, billing y admin siguen asumiendo DB unica.
 - AI se ejecuta dentro del flujo del mensaje y puede bloquear procesamiento.
-- No existe BullMQ todavia.
+- BullMQ existe como modo opcional; falta validarlo contra Redis externo real en staging.
 - Idempotencia de mensajes entrantes esta en memoria, por proceso.
 - Sesiones activas estan en RAM, lo que complica escalar horizontalmente.
-- Schedules corren dentro del proceso web.
-- Docker todavia modela `app` como servicio monolitico.
-- Compose no define limites de CPU/memoria para servicios.
+- Schedules corren en el proceso `worker`.
+- Docker modela `api`, `whatsapp` y `worker` como servicios separados.
+- Compose prod/dev define healthchecks y limites por servicio de app.
 - Backups existen como script, pero no como servicio/schedule versionado por platform DB y tenant DBs.
 
 ### Anti-patrones a eliminar progresivamente
@@ -145,7 +145,7 @@ Durante la transicion puede existir una DB compartida inicial, pero el codigo de
 
 ### Fase 4: infraestructura hibrida
 
-- Compose con servicios separados: `api`, `whatsapp`, `worker`, `ai-worker`, `redis`, `platform-postgres`, `tenant-postgres-low`, `nginx`.
+- Compose con servicios separados de app: `api`, `whatsapp`, `worker`, `ai-worker` y `nginx`. Redis y las DB viven fuera de este repo.
 - Agregar dedicated tenant DBs segun necesidad.
 - Backups independientes por DB.
 - Observabilidad lista para Loki/Grafana/Sentry.
@@ -321,10 +321,6 @@ Servicios objetivo en Compose:
 - `whatsapp`
 - `worker`
 - `ai-worker` opcional, perfil `ai`
-- `redis`
-- `platform-postgres`
-- `tenant-postgres-low`
-- `tenant-postgres-medium` cuando haga falta
 - `backup`
 
 Requisitos:
@@ -333,7 +329,7 @@ Requisitos:
 - exponer solo proxy
 - healthchecks en todos los servicios
 - restart policies
-- volumes persistentes por DB
+- DB/Redis externos, sin contenedores ni volumes de infraestructura en este repo
 - resource limits por servicio
 - logs rotados
 - perfiles para AI y backups

@@ -14,21 +14,30 @@ const { closePool } = dbModule;
 const { closeRedis } = redisModule;
 const { closeTenantPools } = tenantConnectionModule;
 
-validateEnv();
-
 const PORT = process.env.WHATSAPP_PORT || process.env.PORT || 3001;
+let server;
 
-const server = app.listen(PORT, () => {
-  logger.info({
-    service: 'whatsapp',
-    port: PORT,
-    health_url: `http://localhost:${PORT}/health`,
-    webhook_url: `http://localhost:${PORT}/webhook/{slug}`,
-  }, '[WhatsApp] Servicio iniciado');
-});
+export function startServer() {
+  validateEnv();
 
-function shutdown(signal) {
+  server = app.listen(PORT, () => {
+    logger.info({
+      service: 'whatsapp',
+      port: PORT,
+      health_url: `http://localhost:${PORT}/health`,
+      webhook_url: `http://localhost:${PORT}/webhook/{slug}`,
+    }, '[WhatsApp] Servicio iniciado');
+  });
+
+  return server;
+}
+
+export function shutdown(signal) {
   logger.info({ signal, service: 'whatsapp' }, '[WhatsApp] Apagando servicio...');
+  if (!server) {
+    process.exit(0);
+  }
+
   server.close(async () => {
     const { closeBullMQ } = await import('../../queues/bullmqQueue.js');
     await Promise.allSettled([closeBullMQ(), closeTenantPools(), closePool(), closeRedis()]);
@@ -38,7 +47,11 @@ function shutdown(signal) {
   setTimeout(() => process.exit(1), 10000);
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+if (process.env.NODE_ENV !== 'test') {
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  startServer();
+}
 
 export default app;

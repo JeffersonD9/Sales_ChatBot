@@ -1,7 +1,7 @@
-'use strict';
+import cors from 'cors';
+import loggerModule from '../utils/logger.js';
 
-const cors = require('cors');
-const { logger } = require('../utils/logger');
+const { logger } = loggerModule;
 
 function buildOriginList() {
   const raw = (process.env.ALLOWED_ORIGINS || '').trim();
@@ -9,7 +9,7 @@ function buildOriginList() {
   return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
 }
 
-function tenantApiCors() {
+export function tenantApiCors() {
   const origins = buildOriginList();
 
   return cors({
@@ -27,5 +27,3 @@ function tenantApiCors() {
     maxAge: 600,
   });
 }
-
-module.exports = { tenantApiCors };

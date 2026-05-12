@@ -3,7 +3,7 @@
 /**
  * tests/unit/tenants/configRepository.test.js
  *
- * Tests unitarios de src/tenants/configRepository.js
+ * Tests unitarios de src/tenant/repositories/whatsappConfigRepository.js
  *
  * Mocks:
  *   · src/drizzle/db → mock Drizzle con cola de resultados
@@ -35,7 +35,7 @@ jest.mock('../../../src/utils/logger', () => ({
 
 // ── Imports (después de los mocks) ────────────────────────────────────────────
 
-const repo = require('../../../src/tenants/configRepository');
+const repo = require('../../../src/tenant/repositories/whatsappConfigRepository');
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

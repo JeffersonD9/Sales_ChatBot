@@ -2,9 +2,7 @@ import { QUEUES } from '../names.js';
 import * as directQueue from '../directQueue.js';
 import * as bullmqQueue from '../bullmqQueue.js';
 import { getQueueMode, isBullMQMode, isDirectQueueMode } from '../mode.js';
-import dispatcherModule from '../../webhooks/dispatcher.js';
-
-const { dispatch } = dispatcherModule;
+import { dispatch } from '../../services/whatsapp/ingestion/dispatcher.js';
 
 export async function enqueueInboundWebhook(tenantSlug, webhookBody) {
   const payload = {

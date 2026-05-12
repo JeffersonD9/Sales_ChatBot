@@ -20,7 +20,7 @@ RUN chmod +x entrypoint.sh
 
 EXPOSE 3000 3001
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "dev:api"]
 
 FROM base AS deps
 
@@ -45,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD node -e "const p=process.env.HEALTHCHECK_PORT||process.env.PORT||process.env.API_PORT||process.env.WHATSAPP_PORT||3000;require('http').get('http://localhost:'+p+'/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["node", "src/server.js"]
+CMD ["npm", "run", "start:api"]

@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Plataforma SaaS multitenant de bots de ventas WhatsApp — Jest Tech Solutions",
-  "main": "src/server.js",
+  "main": "src/services/api/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "npm run start:api",
+    "dev": "npm run dev:api",
     "start:api": "node src/services/api/server.js",
     "dev:api": "nodemon src/services/api/server.js",
     "start:whatsapp": "node src/services/whatsapp/server.js",
@@ -16,11 +16,11 @@
     "start:ai-worker": "node src/services/ai-worker/index.js",
     "dev:ai-worker": "nodemon src/services/ai-worker/index.js",
     "import-products": "node scripts/import-products.js",
-    "test": "jest --forceExit",
-    "test:watch": "jest --watch --forceExit",
-    "test:coverage": "jest --coverage --forceExit",
-    "test:unit": "jest tests/unit --forceExit",
-    "test:integration": "jest tests/integration --forceExit"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --forceExit",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch --forceExit",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --forceExit",
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit --forceExit",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration --forceExit"
   },
   "jest": {
     "testEnvironment": "node",

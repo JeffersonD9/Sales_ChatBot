@@ -7,7 +7,7 @@
  * Tests the full request pipeline: HMAC verification → dispatcher → 200 response.
  *
  * The dispatcher and flow engine are mocked so we test only the HTTP layer.
- * A real Express app instance is used (via src/app.js).
+ * A real Express app instance is used from the WhatsApp ESM boundary.
  */
 
 const { createHmac } = require('crypto');
@@ -15,28 +15,50 @@ const supertest      = require('supertest');
 
 // ── Mocks: block all I/O that app.js would normally open ─────────────────────
 
-jest.mock('../../src/db', () => ({
-  query:       jest.fn().mockResolvedValue({ rows: [] }),
+jest.unstable_mockModule('../../src/db.js', () => ({
+  default: {
+    query: jest.fn().mockResolvedValue({ rows: [] }),
+    healthCheck: jest.fn().mockResolvedValue(true),
+    isDbConnectionError: jest.fn().mockReturnValue(false),
+  },
+  query: jest.fn().mockResolvedValue({ rows: [] }),
   healthCheck: jest.fn().mockResolvedValue(true),
+  isDbConnectionError: jest.fn().mockReturnValue(false),
 }));
 
-jest.mock('../../src/redis', () => ({
-  getRedis:        jest.fn(() => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() })),
+jest.unstable_mockModule('../../src/redis.js', () => ({
+  default: {
+    getRedis: jest.fn(() => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() })),
+    redisHealthCheck: jest.fn().mockResolvedValue(true),
+  },
+  getRedis: jest.fn(() => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() })),
   redisHealthCheck: jest.fn().mockResolvedValue(true),
 }));
 
-jest.mock('../../src/utils/logger', () => ({
+jest.unstable_mockModule('../../src/utils/logger.js', () => ({
+  default: { logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() } },
   logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
 // Mock dispatcher so background processing doesn't run
 const mockDispatch = jest.fn();
-jest.mock('../../src/webhooks/dispatcher', () => ({
+jest.unstable_mockModule('../../src/services/whatsapp/ingestion/dispatcher.js', () => ({
   dispatch: mockDispatch,
 }));
 
 // Mock tenant loader — returns a tenant so verification passes
-jest.mock('../../src/tenants/loader', () => ({
+jest.unstable_mockModule('../../src/platform/tenancy/loader.js', () => ({
+  default: {
+    get: jest.fn().mockResolvedValue({
+      slug: 'test-tenant',
+      verify_token: 'my-verify-token',
+      wa_token: 'wa-token',
+      bot_config: {},
+      products: [],
+    }),
+    cachedSlugs: jest.fn().mockReturnValue([]),
+    invalidate: jest.fn(),
+  },
   get:          jest.fn().mockResolvedValue({
     slug:         'test-tenant',
     verify_token: 'my-verify-token',
@@ -86,7 +108,10 @@ beforeAll(() => {
   process.env.META_APP_SECRET = APP_SECRET;
   process.env.DEMO_MODE       = 'false';
   process.env.NODE_ENV        = 'test';
-  app = require('../../src/app');
+});
+
+beforeAll(async () => {
+  ({ default: app } = await import('../../src/services/whatsapp/app.js'));
 });
 
 afterAll(() => {

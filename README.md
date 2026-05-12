@@ -18,7 +18,7 @@ Servicios:
 - PostgreSQL: platform DB y tenant DBs compartidas o dedicadas.
 - Reverse proxy: Nginx o Traefik.
 
-El MVP puede seguir ejecutandose como un solo proceso durante la transicion, pero el codigo nuevo debe respetar los boundaries anteriores.
+El runtime operativo corre separado por servicios. El codigo nuevo debe respetar los boundaries anteriores.
 
 ---
 
@@ -61,10 +61,13 @@ Tenant DBs:
 
 ```text
 src/
-  app.js
-  server.js
   db.js
   redis.js
+  services/
+    api/
+    whatsapp/
+    worker/
+    ai-worker/
   platform/
     tenancy/tenantResolver.js
     database/connectionManager.js
@@ -72,8 +75,6 @@ src/
   tenant/
     database/tenantDb.js
     repositories/catalogRepository.js
-  tenants/
-  webhooks/
   core/
     flow-engine/
     ai/
@@ -151,7 +152,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-La topologia Docker default ya corre servicios separados: `api`, `whatsapp` y `worker`. El `ai-worker` se levanta con `--profile ai`; el proceso unico historico queda disponible con `--profile legacy`. Ver `docs/architecture/docker-topology.md`.
+La topologia Docker default corre servicios separados: `api`, `whatsapp` y `worker`. El `ai-worker` se levanta con `--profile ai`. Ver `docs/architecture/docker-topology.md`.
 
 El compose no incluye PostgreSQL/MySQL ni Redis. Configura `DATABASE_URL`, `PLATFORM_DATABASE_URL`, URLs tenant y `REDIS_URL` apuntando a infraestructura externa.
 
@@ -168,6 +169,6 @@ No correr migraciones desde esta app.
 5. Activar AI asincrono con `AI_QUEUE_MODE=bullmq`.
 6. Convertir boundaries canonicos a ESM por grupos.
 7. Agregar resource limits, backups independientes y observabilidad.
-8. Reducir wrappers legacy y completar migracion ESM por boundary.
+8. Convertir CommonJS restante por boundary completo y completar migracion ESM.
 
 Ver [CLAUDE.md](CLAUDE.md) para el analisis completo y el plan de arquitectura.

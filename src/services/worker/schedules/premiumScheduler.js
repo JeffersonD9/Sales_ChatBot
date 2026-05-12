@@ -1,5 +1,5 @@
 import dbModule from '../../../db.js';
-import senderModule from '../../../integrations/whatsapp/sender.js';
+import senderModule from '../../../core/whatsapp/sender.js';
 import loggerModule from '../../../utils/logger.js';
 import cryptoModule from '../../../utils/crypto.js';
 

@@ -6,7 +6,7 @@
  * Los tokens ya no se leen de process.env sino del objeto tenant,
  * lo que permite operar múltiples cuentas de Meta en el mismo proceso.
  *
- * En DEMO_MODE: las respuestas van a global.demoCollector (igual que antes).
+ * En DEMO_MODE: las respuestas pueden ir a global.demoCollector si un harness local lo define.
  */
 
 const axios   = require('axios');

@@ -1,19 +1,15 @@
 import express from 'express';
 import configRouter from './routes/whatsappConfigRouter.js';
-import demoRouter from '../../demo/router.js';
-import metricsRouter from '../../metrics.js';
+import metricsRouter from '../../observability/metrics.js';
 import dbModule from '../../db.js';
-import healthModule from '../../observability/health.js';
+import { getServiceHealth } from '../../observability/health.js';
 import loggerModule from '../../utils/logger.js';
-import corsModule from '../../middleware/cors.js';
-import securityModule from '../../middleware/security.js';
+import { tenantApiCors } from '../../middleware/cors.js';
+import { securityHeaders } from '../../middleware/security.js';
 import tenantLoader from '../../platform/tenancy/loader.js';
 
 const { isDbConnectionError } = dbModule;
-const { getServiceHealth } = healthModule;
 const { logger } = loggerModule;
-const { tenantApiCors } = corsModule;
-const { securityHeaders } = securityModule;
 const { cachedSlugs } = tenantLoader;
 
 const app = express();
@@ -22,7 +18,6 @@ app.disable('x-powered-by');
 app.use(express.json());
 
 app.use('/api/whatsapp', tenantApiCors(), configRouter);
-app.use('/demo', demoRouter);
 app.use('/metrics', metricsRouter);
 
 app.get('/health', securityHeaders(), async (_req, res) => {

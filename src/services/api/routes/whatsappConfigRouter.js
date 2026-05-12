@@ -2,11 +2,10 @@ import express from 'express';
 import botService from '../../../core/botService.js';
 import configRepo from '../../../tenant/repositories/whatsappConfigRepository.js';
 import authModule from '../../../platform/auth/tenantAuthMiddleware.js';
-import securityModule from '../../../middleware/security.js';
+import { securityHeaders } from '../../../middleware/security.js';
 import loggerModule from '../../../utils/logger.js';
 
 const { requireTenantAuth, tenantRateLimit } = authModule;
-const { securityHeaders } = securityModule;
 const { logger } = loggerModule;
 
 const router = express.Router();

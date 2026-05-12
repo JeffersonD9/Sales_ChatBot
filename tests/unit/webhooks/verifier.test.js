@@ -1,11 +1,12 @@
 'use strict';
 
 const crypto = require('crypto');
-const { verifyMetaSignature } = require('../../../src/webhooks/verifier');
 
 jest.mock('../../../src/utils/logger', () => ({
   logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn() },
 }));
+
+let verifyMetaSignature;
 
 const SECRET = 'test_secret_1234567890abcdef';
 const BODY   = JSON.stringify({ object: 'whatsapp_business_account', entry: [] });
@@ -23,6 +24,10 @@ function sign(body, secret = SECRET) {
 }
 
 describe('verifyMetaSignature', () => {
+  beforeAll(async () => {
+    ({ verifyMetaSignature } = await import('../../../src/services/whatsapp/webhooks/verifier.js'));
+  });
+
   it('retorna true con firma valida', () => {
     const req = makeReq({ signature: sign(BODY) });
     expect(verifyMetaSignature(req, SECRET)).toBe(true);

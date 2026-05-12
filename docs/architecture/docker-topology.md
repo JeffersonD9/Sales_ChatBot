@@ -1,6 +1,6 @@
 # Docker topology
 
-La fase actual separa el runtime por boundaries sin eliminar el modo monolitico.
+La fase actual corre el runtime por boundaries separados. El modo monolitico ya no forma parte de Docker ni de los scripts npm operativos.
 
 Este repo despliega solamente el bot y el proxy. No define contenedores de PostgreSQL, MySQL ni Redis. Esas piezas pertenecen a infraestructura externa.
 
@@ -28,11 +28,9 @@ Servicios opcionales:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile ai up
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile legacy up
 ```
 
 - Perfil `ai`: levanta `ai-worker` (boundary ESM) y habilita el consumer de `ai.requests`.
-- Perfil `legacy`: levanta `app`, el proceso unico historico, en `localhost:3002`.
 
 ## Produccion
 
@@ -72,7 +70,7 @@ El perfil `ai` levanta `ai-worker`, pero activar `AI_QUEUE_MODE=bullmq` para otr
 
 ## Healthchecks
 
-`api`, `whatsapp` y `app` exponen `/health`. La respuesta separa:
+`api` y `whatsapp` exponen `/health`. La respuesta separa:
 
 - `platform_db`: conectividad a `PLATFORM_DATABASE_URL` o fallback `DATABASE_URL`.
 - `tenant_default_db`: allocation default configurada con `TENANT_DATABASE_URL_DEFAULT` o fallback `DATABASE_URL`.
@@ -94,7 +92,6 @@ Produccion define limites por contenedor para evitar que una carga puntual afect
 | `whatsapp` | 0.50 | 384 MB | 256 MB |
 | `worker` | 1.00 | 512 MB | 384 MB |
 | `ai-worker` | 1.00 | 768 MB | 512 MB |
-| `app` legacy | 1.00 | 768 MB | 512 MB |
 | `nginx` | 0.25 | 128 MB | n/a |
 | `certbot` | 0.10 | 128 MB | n/a |
 
@@ -102,7 +99,14 @@ Estos valores son defaults conservadores para MVP. Si sube el trafico, primero a
 
 ## Compatibilidad
 
-La imagen conserva `CMD ["node", "src/server.js"]` para el proceso legacy. Los servicios separados sobreescriben `command`.
+La imagen usa `api` como CMD por defecto. Los servicios separados sobreescriben `command` y apuntan a sus entrypoints ESM:
+
+- `api`: `src/services/api/server.js`.
+- `whatsapp`: `src/services/whatsapp/server.js`.
+- `worker`: `src/services/worker/index.js`.
+- `ai-worker`: `src/services/ai-worker/index.js`.
+
+Los entrypoints HTTP separados exportan funciones de ciclo de vida (`startServer()`/`shutdown()`) y no arrancan listeners bajo `NODE_ENV=test`, de modo que los smokes de importacion no abren puertos ni compiten entre servicios.
 
 La raiz del repo usa `"type": "module"`, pero `src/package.json` mantiene el runtime existente en CommonJS hasta completar la migracion por boundaries.
 

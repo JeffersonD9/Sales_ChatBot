@@ -4,14 +4,9 @@ Este proyecto esta migrando de un MVP monolitico a una arquitectura interna sepa
 
 ## Entry points
 
-El entrypoint historico sigue activo:
+`npm start` y `npm run dev` apuntan al servicio API. Para correr la topologia completa en desarrollo usa Docker Compose, que levanta `api`, `whatsapp` y `worker` separados.
 
-```bash
-npm start
-npm run dev
-```
-
-Nuevos entrypoints por boundary:
+Entrypoints por boundary:
 
 ```bash
 npm run start:api
@@ -50,24 +45,17 @@ src/
     producers/
     processors/
   integrations/
-    whatsapp/
     anthropic/
     openai/
-    email/
   observability/
-    logger.js
-    metrics.js
+  middleware/
   config/
     env.js
-  shared/
-    constants/
-    utils/
-    validation/
 ```
 
 ## Responsabilidades
 
-`src/services/api` es el servicio HTTP de plataforma. Maneja configuracion, admin, auth, billing, health y metrics. No debe procesar conversaciones ni llamar LLM.
+`src/services/api` es el servicio HTTP de plataforma. Maneja configuracion, admin, auth, billing, health y metrics. No expone la UI demo retirada, no debe procesar conversaciones ni llamar LLM.
 
 `src/services/whatsapp` es el servicio HTTP para webhooks de Meta. Debe validar requests, resolver tenant minimo, responder rapido y delegar el trabajo a `queues/producers/whatsappInboundProducer.js`.
 
@@ -81,23 +69,22 @@ src/
 
 `src/queues` contiene el contrato de colas. Los nombres estables viven en `src/queues/names.js`. `QUEUE_MODE=direct` sigue siendo el default compatible; `QUEUE_MODE=memory` usa el bus directo en memoria; `QUEUE_MODE=bullmq` usa Redis/BullMQ.
 
-`src/integrations` contiene adaptadores a proveedores externos como WhatsApp, Anthropic, OpenAI y email. Aqui no deben vivir reglas de negocio.
+`src/integrations` queda reservado para adaptadores reales a proveedores externos. Los aliases historicos de WhatsApp/email fueron retirados; el envio WhatsApp actual sigue en `src/core/whatsapp/sender.js` hasta migrar ese boundary completo.
 
-`src/observability` contiene logger, metrics y tracing futuro. En fase 1 reexporta modulos existentes para migracion gradual.
+`src/observability` es boundary ESM para health y metrics. Los aliases `logger`/`metrics` fueron retirados; el router Prometheus canonico vive en `src/observability/metrics.js`.
+
+`src/middleware` es boundary ESM para CORS, security headers, slug validation y rate limits HTTP.
 
 `src/config` contiene carga y validacion de variables de entorno.
 
-`src/shared` contiene codigo puro y transversal: constantes, formatters y schemas. No debe usar DB, Redis, HTTP ni variables de entorno directamente.
+`src/shared` queda reservado para codigo puro y transversal. Los aliases historicos fueron retirados; el codigo compartido actual sigue en `src/utils` hasta migrar ese boundary completo.
 
 ## Carpetas legacy
 
-Estas carpetas siguen activas como wrappers o legacy mientras se migra modulo por modulo:
+Estas carpetas siguen activas como codigo legacy real mientras se migra modulo por modulo:
 
 ```text
 src/core
-src/tenants
-src/webhooks
-src/billing
 src/notifications
 src/utils
 ```
@@ -152,11 +139,11 @@ El resto de `src` sigue CommonJS temporalmente. Los consumidores (`webhook`, `wo
 
 `src/services/whatsapp` ya es ESM completo para el proceso separado de webhooks. Incluye `server.js`, `app.js`, `webhooks/router.js`, `webhooks/verifier.js` y `ingestion/dispatcher.js`.
 
-El monolito legacy mantiene `src/webhooks/*` en CommonJS como capa de compatibilidad hasta que `src/app.js` y el resto de servicios se conviertan. Redis/BullMQ siguen externos y solo se usan cuando `QUEUE_MODE=bullmq`.
+Los webhooks legacy CommonJS fueron retirados; Redis/BullMQ siguen externos y solo se usan cuando `QUEUE_MODE=bullmq`.
 
 ## Boundaries ESM fases 11 y 12
 
-`src/services/worker` y `src/services/ai-worker` ya son ESM. El worker separado usa `src/services/worker/schedules/premiumScheduler.js`; el monolito legacy usa `src/core/scheduler.js` como copia CommonJS temporal.
+`src/services/worker` y `src/services/ai-worker` ya son ESM. El worker separado usa `src/services/worker/schedules/premiumScheduler.js`.
 
 Los entrypoints ESM (`worker/index.js` y `ai-worker/index.js`) no arrancan timers cuando `NODE_ENV=test`, para permitir smokes de importacion sin procesos en background.
 
@@ -164,7 +151,77 @@ Los entrypoints ESM (`worker/index.js` y `ai-worker/index.js`) no arrancan timer
 
 `src/services/api` ya es ESM completo. Incluye `server.js`, `app.js` y `routes/whatsappConfigRouter.js`.
 
-El monolito legacy mantiene `src/tenants/configRouter.js` como compatibilidad CommonJS hasta convertir o retirar `src/app.js`.
+`src/tenants/configRouter.js` fue retirado; la ruta canonica vive en `src/services/api/routes/whatsappConfigRouter.js`.
+
+## Limpieza legacy fase 14
+
+Se hizo inventario de wrappers CommonJS y se conserva solo lo que todavia sostiene el monolito historico, `npm start`, `npm run dev` o Jest CommonJS:
+
+```text
+src/app.js
+src/server.js
+src/webhooks/verifier.js
+src/webhooks/router.js
+src/webhooks/dispatcher.js
+src/core/scheduler.js
+src/tenants/configRouter.js
+```
+
+No se eliminaron archivos en esta fase porque todos tienen consumidores activos. La limpieza aplicada fue desacoplar `src/queues/producers/whatsappInboundProducer.js` del dispatcher legacy; ahora tanto producer como processor usan `src/services/whatsapp/ingestion/dispatcher.js` como canonico ESM.
+
+Los criterios de retiro quedan documentados en `docs/architecture/folder-structure.md`.
+
+## Ciclo de vida HTTP fase 15
+
+Los entrypoints ESM HTTP (`src/services/api/server.js` y `src/services/whatsapp/server.js`) separan `startServer()`/`shutdown()` del `app` exportado y no arrancan listeners cuando `NODE_ENV=test`. Esto permite smoke tests de imports sin abrir puertos y reduce efectos colaterales al componer servicios.
+
+## Retiro runtime monolitico fase 16
+
+Se retiro el runtime monolitico de las rutas operativas:
+
+Se eliminaron `src/server.js`, `src/core/scheduler.js`, el perfil Docker del proceso unico y los scripts npm del proceso unico.
+
+`npm start` y `npm run dev` ya no arrancan el monolito; apuntan a `api`. Los schedulers y consumers viven en `src/services/worker`, y los webhooks viven en `src/services/whatsapp`.
+
+Fase 17 retiro `src/app.js`, `src/webhooks/*` y `src/tenants/configRouter.js` despues de migrar los tests de webhook al boundary ESM canonico.
+
+Fase 18 retiro wrappers y demo HTTP sin consumidores:
+
+```text
+src/tenants/*
+src/billing/billingService.js
+src/demo/router.js
+src/integrations/whatsapp/*
+src/integrations/email/notifier.js
+src/observability/logger.js
+src/shared/*
+```
+
+Tambien se movieron las referencias activas a sus modulos canonicos: WhatsApp webhook usa `src/platform/tenancy/loader.js`, el worker premium usa `src/core/whatsapp/sender.js`, y el test de configuracion apunta a `src/tenant/repositories/whatsappConfigRepository.js`.
+
+## Boundary ESM fase 19
+
+`src/observability` ya es ESM completo:
+
+```text
+src/observability/package.json
+src/observability/health.js
+src/observability/metrics.js
+```
+
+El router Prometheus se movio desde `src/metrics.js` a `src/observability/metrics.js`; los servicios `api` y `whatsapp` consumen observability desde ese boundary.
+
+## Boundary ESM fase 20
+
+`src/middleware` ya es ESM completo:
+
+```text
+src/middleware/package.json
+src/middleware/cors.js
+src/middleware/security.js
+```
+
+Los servicios `api` y `whatsapp` importan sus middlewares con exports nombrados. Esta es la ultima fase de limpieza de la superficie HTTP productiva; no se convirtio `core/platform/tenant` de golpe porque ahi queda logica de negocio y acceso a datos que requiere una migracion por dominio.
 
 ## Sistema de modulos
 
@@ -172,7 +229,7 @@ La raiz declara `"type": "module"`. Como puente progresivo, `src/package.json` y
 
 ## Docker por servicios
 
-`docker-compose.dev.yml` y `docker-compose.prod.yml` levantan `api`, `whatsapp` y `worker` como servicios separados por defecto. `ai-worker` vive bajo el perfil `ai` y el proceso monolitico historico vive bajo el perfil `legacy`. El compose no levanta PostgreSQL/MySQL ni Redis; esas dependencias son externas. Detalle operativo en `docs/architecture/docker-topology.md`.
+`docker-compose.dev.yml` y `docker-compose.prod.yml` levantan `api`, `whatsapp` y `worker` como servicios separados por defecto. `ai-worker` vive bajo el perfil `ai`. El compose no levanta PostgreSQL/MySQL ni Redis; esas dependencias son externas. Detalle operativo en `docs/architecture/docker-topology.md`.
 
 ## Infraestructura externa
 
@@ -191,23 +248,23 @@ Los endpoints `/health` reportan `platform_db`, `tenant_default_db`, `redis`, `r
 
 Fase 8 agrega limites de CPU, memoria y `pids_limit` en `docker-compose.prod.yml`. Los procesos Node tambien fijan `NODE_OPTIONS=--max-old-space-size=...` para que el heap quede por debajo del limite del contenedor.
 
-Los limites iniciales son conservadores: `api` y `whatsapp` quedan livianos, `worker` recibe mas CPU para procesar colas, `ai-worker` tiene mas memoria para requests AI, y `app` legacy conserva margen mientras exista. Dev no fija limites para no interferir con hot reload.
+Los limites iniciales son conservadores: `api` y `whatsapp` quedan livianos, `worker` recibe mas CPU para procesar colas, y `ai-worker` tiene mas memoria para requests AI. Dev no fija limites para no interferir con hot reload.
 
 ## Reglas
 
 1. Nuevas rutas HTTP viven en `src/services/{service}`.
 2. Reglas SaaS viven en `src/platform`.
 3. Reglas operativas por tenant viven en `src/tenant`.
-4. APIs externas viven en `src/integrations`.
+4. APIs externas nuevas viven en `src/integrations` solo cuando sean adaptadores reales, no aliases.
 5. Producers, processors y nombres de cola viven en `src/queues`.
-6. Codigo compartido solo va en `src/shared` si no tiene IO.
+6. Codigo compartido solo vuelve a `src/shared` si no tiene IO y se migra como boundary real, no como wrapper.
 7. Tenant-domain no debe importar directamente `src/db.js` ni `src/drizzle/db.js`.
 8. Esta app no ejecuta migraciones desde runtime ni scripts de aplicacion.
 
-## Siguiente fase sugerida
+## Estado final del refactor progresivo
+
+El runtime productivo queda separado por servicios, sin monolito ni wrappers HTTP legacy. Queda trabajo evolutivo, no bloqueante para este refactor:
 
 1. Probar `QUEUE_MODE=bullmq` contra Redis externo real en ambiente dev/staging.
 2. Activar `AI_QUEUE_MODE=bullmq` con `start:ai-worker` en ambiente controlado.
-3. Eliminar wrappers legacy cuando tests y scripts apunten a canonicos.
-4. Migrar `src/app.js`/`src/server.js` legacy o retirarlos cuando ya no sean necesarios.
-5. Convertir core/tenant/platform compartidos por boundaries.
+3. Convertir `core`, `notifications`, `utils`, `platform` y `tenant` por dominios completos cuando se vaya a tocar su logica de negocio.

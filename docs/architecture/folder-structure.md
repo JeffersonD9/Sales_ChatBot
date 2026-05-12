@@ -24,7 +24,7 @@ src/services/
     processors/
 ```
 
-`services/api` contiene HTTP de plataforma: configuracion del bot, demo, metrics, health y futuras rutas admin/billing.
+`services/api` contiene HTTP de plataforma: configuracion del bot, metrics, health y futuras rutas admin/billing. La UI HTTP `/demo` fue retirada de la ruta productiva.
 
 `services/whatsapp` contiene el boundary HTTP de Meta: verificacion, raw body, firma HMAC y despacho inicial de eventos entrantes. El POST del webhook pasa por `queues/producers/whatsappInboundProducer.js`.
 
@@ -59,10 +59,8 @@ src/tenant/
 
 ```text
 src/integrations/
-  whatsapp/
   anthropic/
   openai/
-  email/
 
 src/queues/
   names.js
@@ -70,12 +68,12 @@ src/queues/
   processors/
 
 src/observability/
+src/middleware/
 src/config/
-src/shared/
 src/drizzle/
 ```
 
-`integrations` contiene adaptadores a APIs externas. No debe contener reglas de negocio.
+`integrations` queda reservado para adaptadores reales a APIs externas. Los aliases historicos de WhatsApp/email fueron retirados para no duplicar caminos.
 
 `queues` contiene contratos de cola, producers y processors. Los nombres estables viven en `queues/names.js`.
 
@@ -95,26 +93,53 @@ src/queues/processors/aiRequestsProcessor.js
 
 `AI_QUEUE_MODE=direct` mantiene AI en proceso. `AI_QUEUE_MODE=bullmq` envia `ai.requests` al `services/ai-worker`.
 
-`observability` contiene logger, metrics y tracing futuro.
+`observability` es boundary ESM y contiene health, metrics y tracing futuro. El logger canonico sigue temporalmente en `src/utils/logger.js` hasta migrar ese boundary.
+
+`middleware` es boundary ESM y contiene CORS, security headers, slug validation y rate limits HTTP.
 
 `config` centraliza env y settings.
 
-`shared` contiene utilidades puras sin IO.
+`shared` queda reservado para utilidades puras sin IO cuando se migren como boundary completo.
 
 `drizzle` contiene schema y cliente ORM. No ejecutar migraciones desde runtime.
 
-## Wrappers legacy
+## Wrappers legacy retirados
 
-Estas rutas siguen existiendo solo como compatibilidad:
+Estas rutas existian solo como compatibilidad y fueron retiradas al quedar sin consumidores productivos:
 
 ```text
-src/webhooks/*
 src/billing/billingService.js
 src/tenants/*
-src/core/scheduler.js
+src/integrations/whatsapp/*
+src/integrations/email/notifier.js
+src/observability/logger.js
+src/shared/*
 ```
 
-Regla: no agregar funcionalidad nueva ahi. Si hay un cambio real, hacerlo en el modulo canonico y dejar el wrapper exportando.
+Regla: no recrear aliases para acelerar imports. Si hay un cambio real, hacerlo en el modulo canonico o migrar el boundary completo.
+
+Inventario de fase 14:
+
+| Wrapper legacy | Canonico | Estado |
+| --- | --- | --- |
+| `src/tenants/loader.js` | `src/platform/tenancy/loader.js` | Retirado en fase 18. |
+| `src/tenants/repository.js` | `src/platform/tenancy/repository.js` | Retirado en fase 18. |
+| `src/tenants/configRepository.js` | `src/tenant/repositories/whatsappConfigRepository.js` | Retirado en fase 18. |
+| `src/tenants/authMiddleware.js` | `src/platform/auth/tenantAuthMiddleware.js` | Retirado en fase 18. |
+| `src/billing/billingService.js` | `src/platform/billing/billingService.js` | Retirado en fase 18. |
+| `src/metrics.js` | `src/observability/metrics.js` | Movido en fase 19. |
+
+En esta fase se elimino el uso del dispatcher legacy desde `src/queues/producers/whatsappInboundProducer.js`; producers y processors de `whatsapp.inbound` quedan alineados con `src/services/whatsapp/ingestion/dispatcher.js`.
+
+Fase 16 retiro `src/server.js`, `src/core/scheduler.js`, los scripts `start:legacy`/`dev:legacy` y el perfil Docker `legacy`.
+
+Fase 17 retiro `src/app.js`, `src/webhooks/*` y `src/tenants/configRouter.js`.
+
+Fase 18 retiro aliases CommonJS sin consumidores y la ruta HTTP `/demo`. Las referencias vivas ahora apuntan a modulos canonicos.
+
+Fase 19 convirtio `src/observability` en boundary ESM y movio `/metrics` desde `src/metrics.js` a `src/observability/metrics.js`.
+
+Fase 20 convirtio `src/middleware` en boundary ESM. La superficie HTTP productiva (`services/api`, `services/whatsapp`, `observability`, `middleware`) queda alineada en ESM.
 
 ## Modulos canonicos de fase 2
 
@@ -154,7 +179,7 @@ La raiz declara `"type": "module"`. `src/` y `tests/` siguen temporalmente en Co
 
 ## Docker
 
-La topologia Docker default separa `api`, `whatsapp` y `worker`. `ai-worker` se activa con el perfil `ai`; el proceso unico historico se conserva con el perfil `legacy`. Docker no define bases de datos ni Redis en este repo; esos servicios son externos. Ver `docs/architecture/docker-topology.md`.
+La topologia Docker default separa `api`, `whatsapp` y `worker`. `ai-worker` se activa con el perfil `ai`. Docker no define bases de datos ni Redis en este repo; esos servicios son externos. Ver `docs/architecture/docker-topology.md`.
 
 ## Reglas anti-mezcla
 
