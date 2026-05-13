@@ -1,7 +1,9 @@
 'use strict';
 require('dotenv').config();
-const { decrypt } = require('../src/utils/crypto');
-const { query }   = require('../src/db');
+const { decrypt } = require('@whatsapp-saas/shared-utils');
+const { db }      = require('../packages/platform-data');
+
+const { query } = db;
 
 (async () => {
   try {

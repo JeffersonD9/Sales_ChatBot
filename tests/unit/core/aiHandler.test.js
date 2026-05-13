@@ -5,7 +5,7 @@
  *
  * Mocks:
  *   · @anthropic-ai/sdk  → cliente simulado con messages.create configurable
- *   · src/redis.js       → getRedis retorna null (sin Redis en tests)
+ *   · platform-data Redis → getRedis retorna null (sin Redis en tests)
  *   · src/utils/logger   → silencia logs
  */
 
@@ -19,17 +19,19 @@ jest.mock('@anthropic-ai/sdk', () => {
   }));
 });
 
-jest.mock('../../../src/redis', () => ({
-  getRedis: jest.fn(() => null),
+jest.mock('../../../packages/platform-data', () => ({
+  redis: {
+    getRedis: jest.fn(() => null),
+  },
 }));
 
-jest.mock('../../../src/utils/logger', () => ({
+jest.mock('@whatsapp-saas/logger', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 // ── Módulo bajo test ──────────────────────────────────────────────────────────
 
-const { handleWithAI, _resetClientForTest } = require('../../../src/core/ai/aiHandler');
+const { handleWithAI, _resetClientForTest } = require('../../../apps/ai-orchestrator/core/aiHandler');
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

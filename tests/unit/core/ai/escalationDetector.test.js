@@ -1,11 +1,13 @@
 'use strict';
 
 jest.mock('@anthropic-ai/sdk');
-jest.mock('../../../../src/core/whatsapp/sender');
+jest.mock('../../../../apps/message-worker/core/whatsapp/sender', () => ({
+  sendText: jest.fn(),
+}));
 
 const Anthropic  = require('@anthropic-ai/sdk');
-const { sendText } = require('../../../../src/core/whatsapp/sender');
-const { check, _resetClientForTest } = require('../../../../src/core/ai/escalationDetector');
+const { sendText } = require('../../../../apps/message-worker/core/whatsapp/sender');
+const { check, _resetClientForTest } = require('../../../../apps/ai-orchestrator/core/escalationDetector');
 
 const TENANT = {
   slug:        'test-store',

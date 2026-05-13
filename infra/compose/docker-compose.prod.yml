@@ -1,0 +1,277 @@
+# Production stack — Hostinger KVM2 (4 vCPU / 8 GB RAM)
+#
+# Usage (desde la raíz del proyecto):
+#   docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile ai up -d
+#
+# TLS bootstrap (primera vez, antes de levantar nginx definitivo):
+#   docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile tls-bootstrap up -d nginx-bootstrap
+#   # correr certbot manualmente, luego bajar bootstrap y subir nginx normal
+#
+# Dependencias externas (fuera de este compose):
+#   PostgreSQL: PLATFORM_DATABASE_URL + TENANT_DATABASE_URL_DEFAULT
+#
+# Redis vive en este stack como infraestructura interna para BullMQ/cache.
+
+services:
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: whatsapp-saas-redis
+    restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 640m
+    mem_reservation: 256m
+    pids_limit: 64
+    env_file: .env
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD"
+        fi
+        exec redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    build:
+      context: .
+      target: runner
+    image: jestsolution.dev/whatsapp-saas:prod
+    container_name: whatsapp-saas-api
+    restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 384m
+    mem_reservation: 192m
+    pids_limit: 128
+    command: ["node", "apps/api-core/server.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      API_PORT: "3000"
+      HEALTHCHECK_PORT: "3000"
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      NODE_OPTIONS: "--max-old-space-size=256"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - media_data:/var/whatsapp-saas/media
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.HEALTHCHECK_PORT+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  whatsapp:
+    image: jestsolution.dev/whatsapp-saas:prod
+    container_name: whatsapp-saas-whatsapp
+    restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 384m
+    mem_reservation: 192m
+    pids_limit: 128
+    command: ["node", "apps/wa-session-manager/server.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      WHATSAPP_PORT: "3001"
+      HEALTHCHECK_PORT: "3001"
+      QUEUE_MODE: bullmq
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      NODE_OPTIONS: "--max-old-space-size=256"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - media_data:/var/whatsapp-saas/media
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.HEALTHCHECK_PORT+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    image: jestsolution.dev/whatsapp-saas:prod
+    container_name: whatsapp-saas-worker
+    restart: unless-stopped
+    cpus: "1.00"
+    mem_limit: 512m
+    mem_reservation: 256m
+    pids_limit: 128
+    command: ["node", "apps/message-worker/index.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      QUEUE_MODE: bullmq
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      NODE_OPTIONS: "--max-old-space-size=384"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - media_data:/var/whatsapp-saas/media
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const r=new(require('ioredis'))(process.env.REDIS_URL||'redis://localhost:6379',{connectTimeout:3000,maxRetriesPerRequest:1,enableReadyCheck:false});r.ping().then(()=>{r.disconnect();process.exit(0)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ai-worker:
+    image: jestsolution.dev/whatsapp-saas:prod
+    container_name: whatsapp-saas-ai-worker
+    restart: unless-stopped
+    cpus: "1.00"
+    mem_limit: 768m
+    mem_reservation: 384m
+    pids_limit: 128
+    command: ["node", "apps/ai-orchestrator/index.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      AI_QUEUE_MODE: bullmq
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      NODE_OPTIONS: "--max-old-space-size=512"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const r=new(require('ioredis'))(process.env.REDIS_URL||'redis://localhost:6379',{connectTimeout:3000,maxRetriesPerRequest:1,enableReadyCheck:false});r.ping().then(()=>{r.disconnect();process.exit(0)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - ai
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    build:
+      context: ./infra/nginx
+    image: jestsolution.dev/whatsapp-saas-nginx:prod
+    container_name: whatsapp-saas-nginx
+    restart: unless-stopped
+    cpus: "0.25"
+    mem_limit: 128m
+    mem_reservation: 64m
+    pids_limit: 64
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - media_data:/var/whatsapp-saas/media:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      whatsapp:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # TLS bootstrap: levanta un nginx mínimo para obtener el primer certificado
+  # Uso: --profile tls-bootstrap (antes de levantar nginx definitivo)
+  nginx-bootstrap:
+    image: nginx:1.27-alpine
+    container_name: whatsapp-saas-nginx-bootstrap
+    restart: "no"
+    profiles:
+      - tls-bootstrap
+    ports:
+      - "80:80"
+    volumes:
+      - ./certbot/www:/var/www/certbot:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        printf 'server {\n  listen 80;\n  server_name _;\n  location /.well-known/acme-challenge/ { root /var/www/certbot; }\n  location / { return 200 "tls bootstrap ok"; add_header Content-Type text/plain; }\n}\n' > /etc/nginx/conf.d/default.conf
+        nginx -g 'daemon off;'
+    networks:
+      - internal
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: whatsapp-saas-certbot
+    restart: unless-stopped
+    cpus: "0.10"
+    mem_limit: 128m
+    mem_reservation: 32m
+    pids_limit: 32
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  redis_data:
+    driver: local
+  media_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/whatsapp-saas/media
+
+networks:
+  internal:
+    driver: bridge

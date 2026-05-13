@@ -14,7 +14,7 @@ require('dotenv').config();
 
 const { Pool }  = require('pg');
 const Redis     = require('ioredis');
-const { formatPrice } = require('../src/utils/formatters');
+const { formatPrice } = require('@whatsapp-saas/shared-utils');
 
 function parseArgs() {
   const args = {};
@@ -42,7 +42,13 @@ async function main() {
     process.exit(1);
   }
 
-  const pool  = new Pool({ connectionString: process.env.DATABASE_URL });
+  const databaseUrl = process.env.PLATFORM_DATABASE_URL || process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.error('Falta PLATFORM_DATABASE_URL para registrar pagos.');
+    process.exit(1);
+  }
+
+  const pool  = new Pool({ connectionString: databaseUrl });
   let   redis = null;
 
   try {

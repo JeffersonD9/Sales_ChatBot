@@ -4,10 +4,13 @@
 
 const { createMockDb } = require('../../helpers/mockDb');
 const mockDb = createMockDb();
+const mockSchema = require('../../../packages/platform-data/src/drizzle/schema');
 
-jest.mock('../../../src/drizzle/db', () => ({ getDb: () => mockDb }));
-jest.mock('../../../src/db', () => ({ getPool: jest.fn() }));
-jest.mock('../../../src/utils/logger', () => ({
+jest.mock('../../../packages/platform-data', () => ({
+  drizzle: { getDb: () => mockDb },
+  schema: mockSchema,
+}));
+jest.mock('@whatsapp-saas/logger', () => ({
   logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
@@ -17,7 +20,7 @@ const {
   clearState,
   getActiveSessions,
   _resetForTest,
-} = require('../../../src/core/state/manager');
+} = require('../../../apps/message-worker/core/state/manager');
 
 beforeEach(() => {
   _resetForTest();

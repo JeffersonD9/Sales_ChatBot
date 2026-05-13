@@ -5,7 +5,7 @@
  *
  * Uso:
  *   const { createMockDb } = require('../../helpers/mockDb');
- *   jest.mock('../../../src/drizzle/db', () => ({ getDb: () => mockDb }));
+ *   jest.mock('../../../packages/platform-data', () => ({ drizzle: { getDb: () => mockDb }, schema }));
  *   const mockDb = createMockDb();
  *
  * Encola resultados con mockDb._enqueue(result).

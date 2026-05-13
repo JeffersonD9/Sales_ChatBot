@@ -2,7 +2,7 @@
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-jest.mock('../../../src/utils/logger', () => ({
+jest.mock('@whatsapp-saas/logger', () => ({
   logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
@@ -12,7 +12,7 @@ const mockSendInteractiveList   = jest.fn().mockResolvedValue(undefined);
 const mockSendInteractiveButtons = jest.fn().mockResolvedValue(undefined);
 const mockSendImage             = jest.fn().mockResolvedValue(undefined);
 
-jest.mock('../../../src/core/whatsapp/sender', () => ({
+jest.mock('../../../apps/message-worker/core/whatsapp/sender', () => ({
   sendText:               mockSendText,
   sendInteractiveList:    mockSendInteractiveList,
   sendInteractiveButtons: mockSendInteractiveButtons,
@@ -21,7 +21,7 @@ jest.mock('../../../src/core/whatsapp/sender', () => ({
 
 // Mock IA handler — tests control when it fires
 const mockHandleWithAI = jest.fn().mockResolvedValue(null);
-jest.mock('../../../src/core/ai/aiHandler', () => ({
+jest.mock('../../../apps/message-worker/core/ai/client', () => ({
   handleWithAI: mockHandleWithAI,
 }));
 
@@ -32,8 +32,8 @@ const mockNotifier = {
   notifySale:           jest.fn().mockResolvedValue(undefined),
 };
 
-const { STEP } = require('../../../src/utils/constants');
-const { processMessage } = require('../../../src/core/flow-engine/engine');
+const { STEP } = require('@whatsapp-saas/shared-utils');
+const { processMessage } = require('../../../apps/message-worker/core/flows/sales-v1/engine');
 
 // ── Test tenant fixture ───────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ describe('STEP.MENU', () => {
   test('unrecognized text in MENU → calls handleWithAI', async () => {
     mockHandleWithAI.mockResolvedValueOnce('Respuesta de la IA');
     const session = makeSession(STEP.MENU);
-    await processMessage('57300000001', rawMsg('qué tienen de especial?'), session, makeTenant(), mockNotifier);
+    await processMessage('57300000001', rawMsg('qué tienen de especial?'), session, makeTenant({ plan: 'premium' }), mockNotifier);
     expect(mockHandleWithAI).toHaveBeenCalledWith('57300000001', 'qué tienen de especial?', session, expect.any(Object));
     expect(mockSendText).toHaveBeenCalledWith('57300000001', 'Respuesta de la IA', expect.any(Object));
   });
@@ -210,7 +210,7 @@ describe('STEP.CATALOG_SHOWING', () => {
   test('unrecognized response → calls handleWithAI', async () => {
     mockHandleWithAI.mockResolvedValueOnce(null);
     const session = makeSession(STEP.CATALOG_SHOWING, { talla: 'S' }, [1]);
-    await processMessage('57300000001', rawMsg('cuánto demora el envío?'), session, makeTenant(), mockNotifier);
+    await processMessage('57300000001', rawMsg('cuánto demora el envío?'), session, makeTenant({ plan: 'premium' }), mockNotifier);
     expect(mockHandleWithAI).toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 'use strict';
 
-const { buildSalesPrompt, selectProducts } = require('../../../src/core/ai/salesPrompt');
+const { buildSalesPrompt, selectProducts } = require('../../../apps/ai-orchestrator/core/salesPrompt');
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 

@@ -3,11 +3,11 @@
 /**
  * tests/unit/tenants/configRepository.test.js
  *
- * Tests unitarios de src/tenant/repositories/whatsappConfigRepository.js
+ * Tests unitarios de packages/platform-data/src/tenant/repositories/whatsappConfigRepository.js
  *
  * Mocks:
- *   · src/drizzle/db → mock Drizzle con cola de resultados
- *   · src/redis.js   → cliente Redis simulado
+ *   - packages/platform-data/src/drizzle/db: mock Drizzle con cola de resultados
+ *   - packages/platform-data/src/redis.js: cliente Redis simulado
  */
 
 // ── Mock del cliente Drizzle ──────────────────────────────────────────────────
@@ -15,8 +15,8 @@
 const { createMockDb } = require('../../helpers/mockDb');
 const mockDb = createMockDb();
 
-jest.mock('../../../src/drizzle/db', () => ({ getDb: () => mockDb }));
-jest.mock('../../../src/db', () => ({ getPool: jest.fn() }));
+jest.mock('../../../packages/platform-data/src/drizzle/db', () => ({ getDb: () => mockDb }));
+jest.mock('../../../packages/platform-data/src/db', () => ({ getPool: jest.fn() }));
 
 const mockRedis = {
   get:    jest.fn(),
@@ -25,17 +25,17 @@ const mockRedis = {
   expire: jest.fn(),
 };
 
-jest.mock('../../../src/redis', () => ({
+jest.mock('../../../packages/platform-data/src/redis', () => ({
   getRedis: jest.fn(() => mockRedis),
 }));
 
-jest.mock('../../../src/utils/logger', () => ({
+jest.mock('@whatsapp-saas/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 // ── Imports (después de los mocks) ────────────────────────────────────────────
 
-const repo = require('../../../src/tenant/repositories/whatsappConfigRepository');
+const repo = require('../../../packages/platform-data/src/tenant/repositories/whatsappConfigRepository');
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

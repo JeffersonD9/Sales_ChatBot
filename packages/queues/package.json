@@ -1,0 +1,11 @@
+{
+  "name": "@whatsapp-saas/queues",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./bullmqQueue.js": "./bullmqQueue.js",
+    "./directQueue.js": "./directQueue.js",
+    "./mode.js": "./mode.js",
+    "./names.js": "./names.js"
+  }
+}

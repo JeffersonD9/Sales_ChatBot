@@ -16,6 +16,5 @@ Orden de trabajo actual:
 2. Separar platform DB y tenant DB a nivel de abstracciones.
 3. Hacer tenant-aware los repositorios de sesiones, catalogo y pedidos.
 4. Introducir BullMQ y mover webhooks/schedules/AI a workers.
-5. Reestructurar Docker en servicios separados con limites de recursos.
+5. Reestructurar Docker en servicios separados con limites de recursos. Estado: implementado en `infra/compose/docker-compose.dev.yml` y `infra/compose/docker-compose.prod.yml`; Nginx productivo usa imagen propia desde `infra/nginx` y perfil `tls-bootstrap` para el primer certificado.
 6. Agregar backups independientes por platform DB y tenant DBs.
-

@@ -1,0 +1,161 @@
+# Development overlay.
+#
+# Usage (desde la raíz del proyecto):
+#   docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml --profile ai up
+#
+# Dependencias externas (fuera de este compose):
+#   DATABASE_URL / PLATFORM_DATABASE_URL / TENANT_DATABASE_URL_DEFAULT
+#
+# Redis vive en este stack de desarrollo como infraestructura del repo.
+#
+# Al combinar con docker-compose.yml desde la raiz, los paths relativos
+# se resuelven desde el archivo base.
+
+services:
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: whatsapp-saas-redis-dev
+    restart: unless-stopped
+    env_file: .env
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD"
+        fi
+        exec redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - internal
+
+  api:
+    build:
+      context: .
+      target: dev
+    image: jestsolution.dev/whatsapp-saas:dev
+    container_name: whatsapp-saas-api-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:api"]
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      API_PORT: "3000"
+      HEALTHCHECK_PORT: "3000"
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.HEALTHCHECK_PORT+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - internal
+
+  whatsapp:
+    image: jestsolution.dev/whatsapp-saas:dev
+    container_name: whatsapp-saas-whatsapp-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:whatsapp"]
+    ports:
+      - "3001:3001"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      WHATSAPP_PORT: "3001"
+      HEALTHCHECK_PORT: "3001"
+      QUEUE_MODE: bullmq
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.HEALTHCHECK_PORT+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - internal
+
+  worker:
+    image: jestsolution.dev/whatsapp-saas:dev
+    container_name: whatsapp-saas-worker-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:worker"]
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      QUEUE_MODE: bullmq
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const r=new(require('ioredis'))(process.env.REDIS_URL||'redis://localhost:6379',{connectTimeout:3000,maxRetriesPerRequest:1,enableReadyCheck:false});r.ping().then(()=>{r.disconnect();process.exit(0)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - internal
+
+  ai-worker:
+    image: jestsolution.dev/whatsapp-saas:dev
+    container_name: whatsapp-saas-ai-worker-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:ai-worker"]
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      AI_QUEUE_MODE: bullmq
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const r=new(require('ioredis'))(process.env.REDIS_URL||'redis://localhost:6379',{connectTimeout:3000,maxRetriesPerRequest:1,enableReadyCheck:false});r.ping().then(()=>{r.disconnect();process.exit(0)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - .:/app
+      - /app/node_modules
+    profiles:
+      - ai
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  redis_data:

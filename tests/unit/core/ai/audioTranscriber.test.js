@@ -2,7 +2,7 @@
 
 jest.mock('axios');
 const axios = require('axios');
-const { transcribe, FALLBACK_MSG } = require('../../../../src/core/ai/audioTranscriber');
+const { transcribe, FALLBACK_MSG } = require('../../../../apps/ai-orchestrator/core/audioTranscriber');
 
 const TENANT = {
   slug:     'test-store',

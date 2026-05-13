@@ -1,0 +1,6 @@
+{
+  "name": "@whatsapp-saas/notifications",
+  "private": true,
+  "type": "commonjs",
+  "main": "notifier.js"
+}

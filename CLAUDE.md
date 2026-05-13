@@ -72,30 +72,30 @@ Durante la transicion puede existir una DB compartida inicial, pero el codigo de
 
 ### Lo que ya existe y conviene conservar
 
-- Express esta separado por servicios en `src/services/api` y `src/services/whatsapp`.
+- Express esta separado por servicios en `apps/api-core` y `apps/wa-session-manager`.
 - Redis ya existe como dependencia operativa.
 - Webhook responde 200 rapido y procesa luego con `setImmediate`.
-- Hay `TenantResolver` en `src/platform/tenancy/tenantResolver.js`.
-- Hay `ConnectionManager` en `src/platform/database/connectionManager.js`.
-- Hay `tenant_db_allocations` y `db_clusters` en `src/drizzle/schema.js`.
+- Hay `TenantResolver` en `packages/platform-data`.
+- Hay `ConnectionManager` en `packages/platform-data`.
+- Hay `tenant_db_allocations` y `db_clusters` en `packages/platform-data/src/drizzle/schema.js`.
 - El codigo usa Drizzle y consultas parametrizadas en varias zonas.
 - Hay logging con Pino y endpoint `/metrics`.
-- Hay healthchecks en compose para los servicios de app; DB y Redis se verifican como dependencias externas.
+- Hay healthchecks en compose para los servicios de app y Redis interno; las DB se verifican como dependencias externas.
 
 ### Bottlenecks actuales
 
-- `src/db.js` sigue siendo un pool singleton global.
-- `src/drizzle/db.js` crea un singleton Drizzle global.
+- `packages/platform-data` todavia concentra DB/Redis/tenant repositories como capa compartida CommonJS.
+- Algunas rutas tenant-domain aun necesitan adaptadores tenant-aware mas finos.
 - `state/manager.js` lee y guarda sesiones contra el pool global.
 - Partes de `core`, billing y admin siguen asumiendo DB unica.
 - AI se ejecuta dentro del flujo del mensaje y puede bloquear procesamiento.
-- BullMQ existe como modo opcional; falta validarlo contra Redis externo real en staging.
+- BullMQ existe como modo opcional; falta validarlo contra el Redis interno del stack en staging.
 - Idempotencia de mensajes entrantes esta en memoria, por proceso.
 - Sesiones activas estan en RAM, lo que complica escalar horizontalmente.
 - Schedules corren en el proceso `worker`.
 - Docker modela `api`, `whatsapp` y `worker` como servicios separados.
 - Compose prod/dev define healthchecks y limites por servicio de app.
-- Backups existen como script, pero no como servicio/schedule versionado por platform DB y tenant DBs.
+- Backups deben operarse fuera del runtime de esta app; no hay script interno activo para backup/restore.
 
 ### Anti-patrones a eliminar progresivamente
 
@@ -117,13 +117,13 @@ Durante la transicion puede existir una DB compartida inicial, pero el codigo de
 - Mantener MVP operativo.
 - Congelar regla: la app no corre migraciones.
 - Cambiar docs y runbooks para usar `DATABASE_URL`, `PLATFORM_DATABASE_URL` y `TENANT_DATABASE_URL_DEFAULT`.
-- Auditar repositorios que importan `src/db.js` o `src/drizzle/db.js`.
+- Auditar repositorios internos de `packages/platform-data` que aun usan el pool compartido.
 - Crear tests para resolver tenant y conexion por allocation.
 
 ### Fase 1: boundaries internos
 
 - API, WhatsApp y Worker siguen en el mismo repo, pero con entrypoints separados.
-- Extraer `src/services/api`, `src/services/whatsapp`, `src/services/worker`.
+- Mantener `apps/api-core`, `apps/wa-session-manager`, `apps/message-worker` y `apps/ai-orchestrator` como entrypoints separados.
 - Mover schedules fuera de `server.js`.
 - Convertir webhook POST en enqueue a Redis/BullMQ.
 - Hacer que el worker procese mensajes y actualice sesiones.
@@ -329,7 +329,7 @@ Requisitos:
 - exponer solo proxy
 - healthchecks en todos los servicios
 - restart policies
-- DB/Redis externos, sin contenedores ni volumes de infraestructura en este repo
+- DB externa y Redis interno del stack, con volumen persistente para AOF
 - resource limits por servicio
 - logs rotados
 - perfiles para AI y backups
@@ -465,47 +465,28 @@ Metricas prioritarias:
 ## Folder structure sugerida
 
 ```text
+apps/
+  api-core/
+  wa-session-manager/
+  message-worker/
+  ai-orchestrator/
+packages/
+  platform-data/
+  config/
+  logger/
+  shared-types/
 src/
-  services/
-    api/
-      server.js
-      routes/
-    whatsapp/
-      server.js
-      webhooks/
-      ingestion/
-    worker/
-      index.js
-      processors/
-      schedules/
-    ai-worker/
-      index.js
-      processors/
-  platform/
-    database/
-    tenancy/
-    billing/
-    auth/
-  tenant/
-    database/
-    repositories/
-    services/
   queues/
     bullmq.js
     names.js
-    producers/
-  integrations/
-    whatsapp/
-    anthropic/
-    openai/
   observability/
-    logger.js
     metrics.js
+  middleware/
   config/
     env.js
 ```
 
-Mantener compatibilidad temporal con carpetas actuales mientras se migra modulo por modulo.
+Mantener `src` solo para soporte transversal que aun no se ha movido a packages o apps.
 
 ---
 
@@ -545,8 +526,20 @@ npm run test:integration
 Docker:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Desarrollo (todos los servicios)
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml up
+
+# Desarrollo con AI worker
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml --profile ai up
+
+# Producción
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up -d
+
+# Producción con AI worker
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile ai up -d
+
+# Bootstrap TLS (primera vez, para obtener certificado Let's Encrypt)
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile tls-bootstrap up -d nginx-bootstrap
 ```
 
 No documentar ni ejecutar comandos de migracion desde esta aplicacion.

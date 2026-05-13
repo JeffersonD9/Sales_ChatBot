@@ -150,7 +150,12 @@ async function main() {
     process.exit(1);
   }
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const databaseUrl = process.env.TENANT_DATABASE_URL_DEFAULT || process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('Falta TENANT_DATABASE_URL_DEFAULT para importar productos.');
+  }
+
+  const pool = new Pool({ connectionString: databaseUrl });
 
   try {
     // Verificar que el tenant existe

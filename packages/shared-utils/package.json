@@ -1,0 +1,6 @@
+{
+  "name": "@whatsapp-saas/shared-utils",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.js"
+}

@@ -1,6 +1,6 @@
 'use strict';
 
-const { filterProducts, getAlternatives, getStoreInfo, getOffers } = require('../../../src/core/catalog');
+const { filterProducts, getAlternatives, getStoreInfo, getOffers } = require('../../../apps/message-worker/core/catalog');
 
 const PRODUCTS = [
   { id: '1', name: 'Vestido Rojo',   price: 80000,  sizes: ['S', 'M'],      stock: true  },

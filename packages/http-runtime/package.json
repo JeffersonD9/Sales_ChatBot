@@ -1,0 +1,11 @@
+{
+  "name": "@whatsapp-saas/http-runtime",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cors.js": "./cors.js",
+    "./health.js": "./health.js",
+    "./metrics.js": "./metrics.js",
+    "./security.js": "./security.js"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "@whatsapp-saas/config",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.js"
+}

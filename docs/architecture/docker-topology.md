@@ -2,18 +2,21 @@
 
 La fase actual corre el runtime por boundaries separados. El modo monolitico ya no forma parte de Docker ni de los scripts npm operativos.
 
-Este repo despliega solamente el bot y el proxy. No define contenedores de PostgreSQL, MySQL ni Redis. Esas piezas pertenecen a infraestructura externa.
+Este repo despliega el bot, el proxy y Redis como infraestructura interna para colas/cache. PostgreSQL/MySQL y backups siguen siendo infraestructura externa.
+
+El contrato de comunicacion entre servicios esta documentado en `docs/architecture/service-communication.md`.
 
 ## Desarrollo
 
 Comando default:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml up
 ```
 
 Servicios default:
 
+- `redis`: cola/cache interna con AOF, configurada desde `infra/redis/redis.conf`.
 - `api`: HTTP SaaS en `localhost:3000`.
 - `whatsapp`: webhooks de Meta en `localhost:3001`.
 - `worker`: jobs, schedules y consumer de `whatsapp.inbound`.
@@ -22,12 +25,13 @@ Dependencias externas:
 
 - `DATABASE_URL` o `PLATFORM_DATABASE_URL`.
 - URLs de bases tenant compartidas/dedicadas segun allocations.
-- `REDIS_URL` para cache, queues, locks y session store.
+
+Redis se levanta en el stack y las apps usan `REDIS_URL=redis://redis:6379` por defecto. Si defines `REDIS_PASSWORD`, el servicio Redis y los clientes lo usan.
 
 Servicios opcionales:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile ai up
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml --profile ai up
 ```
 
 - Perfil `ai`: levanta `ai-worker` (boundary ESM) y habilita el consumer de `ai.requests`.
@@ -37,29 +41,32 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile ai up
 Comando default:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up -d
 ```
 
 Servicios default:
 
-- `api`: `node src/services/api/server.js` (boundary ESM).
-- `whatsapp`: `node src/services/whatsapp/server.js` (boundary ESM).
-- `worker`: `node src/services/worker/index.js` (boundary ESM).
-- `nginx`: proxy publico.
+- `redis`: Redis interno para BullMQ/cache, sin puerto publico.
+- `api`: `node apps/api-core/server.js` (boundary ESM).
+- `whatsapp`: `node apps/wa-session-manager/server.js` (boundary ESM).
+- `worker`: `node apps/message-worker/index.js` (boundary ESM).
+- `nginx`: proxy publico construido desde `infra/nginx/Dockerfile`.
 - `certbot`: renovacion TLS.
 
-No se levantan bases de datos ni Redis desde este compose. Produccion debe apuntar a servicios externos o administrados.
+No se levantan bases de datos desde este compose. Produccion usa el Redis interno del stack salvo que `REDIS_URL` apunte explicitamente a un Redis administrado.
 
 Nginx enruta:
 
 - `/webhook/{slug}` hacia `whatsapp:3001`.
 - `/health` y el resto hacia `api:3000`.
 
+Para el primer certificado TLS se usa el perfil `tls-bootstrap`, que levanta `nginx-bootstrap` solo en HTTP para servir `/.well-known/acme-challenge/` antes de arrancar el Nginx productivo con certificados reales.
+
 ## Colas
 
 `whatsapp` y `worker` corren con `QUEUE_MODE=bullmq` en compose dev/prod. Esto hace que el webhook responda rapido y que el procesamiento conversacional ocurra en el worker.
 
-Redis no se define en este compose. `REDIS_URL` debe apuntar al contenedor o servicio Redis del proyecto de infraestructura externo.
+Redis se define como servicio `redis` en Compose y usa `infra/redis/redis.conf`. `REDIS_URL` queda por defecto como `redis://redis:6379`; si se usa Redis administrado, se puede sobreescribir por entorno.
 
 AI se mantiene separado:
 
@@ -88,6 +95,7 @@ Produccion define limites por contenedor para evitar que una carga puntual afect
 
 | Servicio | CPU | Memoria | Node heap |
 | --- | ---: | ---: | ---: |
+| `redis` | 0.50 | 640 MB | n/a |
 | `api` | 0.50 | 384 MB | 256 MB |
 | `whatsapp` | 0.50 | 384 MB | 256 MB |
 | `worker` | 1.00 | 512 MB | 384 MB |
@@ -101,14 +109,16 @@ Estos valores son defaults conservadores para MVP. Si sube el trafico, primero a
 
 La imagen usa `api` como CMD por defecto. Los servicios separados sobreescriben `command` y apuntan a sus entrypoints ESM:
 
-- `api`: `src/services/api/server.js`.
-- `whatsapp`: `src/services/whatsapp/server.js`.
-- `worker`: `src/services/worker/index.js`.
-- `ai-worker`: `src/services/ai-worker/index.js`.
+- `api`: `apps/api-core/server.js`.
+- `whatsapp`: `apps/wa-session-manager/server.js`.
+- `worker`: `apps/message-worker/index.js`.
+- `ai-worker`: `apps/ai-orchestrator/index.js`.
+
+Nginx usa una imagen separada `jestsolution.dev/whatsapp-saas-nginx:prod`, construida desde `infra/nginx`, para mantener proxy, TLS y templates fuera de la imagen Node.
 
 Los entrypoints HTTP separados exportan funciones de ciclo de vida (`startServer()`/`shutdown()`) y no arrancan listeners bajo `NODE_ENV=test`, de modo que los smokes de importacion no abren puertos ni compiten entre servicios.
 
-La raiz del repo usa `"type": "module"`, pero `src/package.json` mantiene el runtime existente en CommonJS hasta completar la migracion por boundaries.
+La raiz del repo usa `"type": "module"`. `src/` esta deprecado y no participa en el runtime; los boundaries compartidos viven en `packages/*`.
 
 ## Backup flow
 

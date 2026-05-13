@@ -1,6 +1,6 @@
 'use strict';
 
-const { formatPrice, formatPhone, capitalizeName } = require('../../../src/utils/formatters');
+const { formatPrice, formatPhone, capitalizeName } = require('@whatsapp-saas/shared-utils');
 
 describe('formatPrice', () => {
   it('formatea numero en pesos colombianos', () => {

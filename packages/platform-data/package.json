@@ -1,0 +1,8 @@
+{
+  "name": "@whatsapp-saas/platform-data",
+  "version": "1.0.0",
+  "description": "Shared data access layer: DB, Redis, platform tenancy, billing, tenant repositories",
+  "type": "commonjs",
+  "main": "index.js",
+  "private": true
+}

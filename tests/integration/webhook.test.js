@@ -15,61 +15,58 @@ const supertest      = require('supertest');
 
 // ── Mocks: block all I/O that app.js would normally open ─────────────────────
 
-jest.unstable_mockModule('../../src/db.js', () => ({
-  default: {
+const mockTenantLoader = {
+  get: jest.fn().mockResolvedValue({
+    slug: 'test-tenant',
+    verify_token: 'my-verify-token',
+    wa_token: 'wa-token',
+    bot_config: {},
+    products: [],
+  }),
+  cachedSlugs: jest.fn().mockReturnValue([]),
+  invalidate: jest.fn(),
+};
+
+const mockPlatformData = {
+  db: {
     query: jest.fn().mockResolvedValue({ rows: [] }),
     healthCheck: jest.fn().mockResolvedValue(true),
     isDbConnectionError: jest.fn().mockReturnValue(false),
   },
-  query: jest.fn().mockResolvedValue({ rows: [] }),
-  healthCheck: jest.fn().mockResolvedValue(true),
-  isDbConnectionError: jest.fn().mockReturnValue(false),
-}));
-
-jest.unstable_mockModule('../../src/redis.js', () => ({
-  default: {
+  redis: {
     getRedis: jest.fn(() => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() })),
     redisHealthCheck: jest.fn().mockResolvedValue(true),
   },
-  getRedis: jest.fn(() => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() })),
-  redisHealthCheck: jest.fn().mockResolvedValue(true),
+  platformDb: {
+    platformHealthCheck: jest.fn().mockResolvedValue(true),
+  },
+  connectionManager: {
+    getDefaultTenantAllocation: jest.fn(() => ({
+      allocationId: 'primary',
+      clusterId: 'primary-shared',
+      strategy: 'shared-low',
+      databaseUrl: 'postgres://test',
+    })),
+  },
+  tenantLoader: mockTenantLoader,
+};
+
+jest.unstable_mockModule('../../packages/platform-data/index.js', () => ({
+  default: mockPlatformData,
 }));
 
-jest.unstable_mockModule('../../src/utils/logger.js', () => ({
+jest.unstable_mockModule('@whatsapp-saas/logger', () => ({
   default: { logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() } },
   logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
-// Mock dispatcher so background processing doesn't run
-const mockDispatch = jest.fn();
-jest.unstable_mockModule('../../src/services/whatsapp/ingestion/dispatcher.js', () => ({
-  dispatch: mockDispatch,
+// Mock queue producer so background processing doesn't run
+const mockEnqueue = jest.fn().mockResolvedValue({ id: 'job-1' });
+jest.unstable_mockModule('../../apps/wa-session-manager/producers/whatsappInboundProducer.js', () => ({
+  enqueueInboundWebhook: mockEnqueue,
 }));
 
 // Mock tenant loader — returns a tenant so verification passes
-jest.unstable_mockModule('../../src/platform/tenancy/loader.js', () => ({
-  default: {
-    get: jest.fn().mockResolvedValue({
-      slug: 'test-tenant',
-      verify_token: 'my-verify-token',
-      wa_token: 'wa-token',
-      bot_config: {},
-      products: [],
-    }),
-    cachedSlugs: jest.fn().mockReturnValue([]),
-    invalidate: jest.fn(),
-  },
-  get:          jest.fn().mockResolvedValue({
-    slug:         'test-tenant',
-    verify_token: 'my-verify-token',
-    wa_token:     'wa-token',
-    bot_config:   {},
-    products:     [],
-  }),
-  cachedSlugs: jest.fn().mockReturnValue([]),
-  invalidate:  jest.fn(),
-}));
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const APP_SECRET = 'test-app-secret-32chars-xxxxxxxx';
@@ -111,7 +108,7 @@ beforeAll(() => {
 });
 
 beforeAll(async () => {
-  ({ default: app } = await import('../../src/services/whatsapp/app.js'));
+  ({ default: app } = await import('../../apps/wa-session-manager/app.js'));
 });
 
 afterAll(() => {
@@ -179,7 +176,7 @@ describe('POST /webhook/:slug', () => {
     expect(res.status).toBe(200);
   });
 
-  test('calls dispatch in background after 200', async () => {
+  test('enqueues message in background after 200', async () => {
     const body = metaPayload();
     const sig  = signBody(body);
 
@@ -189,9 +186,9 @@ describe('POST /webhook/:slug', () => {
       .set('Content-Type', 'application/json')
       .send(body);
 
-    // dispatch is called via setImmediate — wait one tick
+    // enqueue is called via setImmediate — wait one tick
     await new Promise((r) => setImmediate(r));
-    expect(mockDispatch).toHaveBeenCalledWith('test-tenant', expect.any(Object));
+    expect(mockEnqueue).toHaveBeenCalledWith('test-tenant', expect.any(Object));
   });
 
   test('returns 401 when HMAC signature is missing', async () => {
@@ -203,7 +200,7 @@ describe('POST /webhook/:slug', () => {
       .send(body);
 
     expect(res.status).toBe(401);
-    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
   test('returns 401 when HMAC signature is wrong', async () => {
@@ -216,7 +213,7 @@ describe('POST /webhook/:slug', () => {
       .send(body);
 
     expect(res.status).toBe(401);
-    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
   test('returns 200 even when META_APP_SECRET is not set (no signature check)', async () => {

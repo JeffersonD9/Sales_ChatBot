@@ -1,8 +1,8 @@
 # Base compose for the bot runtime.
 #
-# This project does not own database or Redis containers.
-# PostgreSQL/MySQL, Redis and backups are external infrastructure and must be
-# provided through environment variables such as DATABASE_URL, REDIS_URL,
+# This project owns the runtime services and the Redis queue/cache service.
+# PostgreSQL/MySQL and backups remain external infrastructure and must be
+# provided through environment variables such as DATABASE_URL,
 # PLATFORM_DATABASE_URL and tenant DB allocation URLs.
 
 services: {}

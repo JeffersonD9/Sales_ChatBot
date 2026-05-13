@@ -66,7 +66,13 @@ async function main() {
     process.exit(1);
   }
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const databaseUrl = process.env.PLATFORM_DATABASE_URL || process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.error('Falta PLATFORM_DATABASE_URL para crear tenants.');
+    process.exit(1);
+  }
+
+  const pool = new Pool({ connectionString: databaseUrl });
 
   try {
     const result = await pool.query(
@@ -99,7 +105,7 @@ async function main() {
     console.log(`   Slug:    ${tenant.slug}`);
     console.log(`   Nombre:  ${tenant.name}`);
     console.log(`   Status:  ${tenant.status}`);
-    console.log(`\n   URL webhook: https://bots.jesttech.com/webhook/${tenant.slug}`);
+    console.log(`\n   URL webhook: https://jestsolution.dev/webhook/${tenant.slug}`);
     console.log('\n   ⚠️  Registra esa URL en Meta para este número de WhatsApp.');
 
   } catch (err) {

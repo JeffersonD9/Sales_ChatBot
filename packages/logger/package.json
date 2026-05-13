@@ -1,0 +1,6 @@
+{
+  "name": "@whatsapp-saas/logger",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.js"
+}

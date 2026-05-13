@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 
-jest.mock('../../../src/utils/logger', () => ({
+jest.mock('@whatsapp-saas/logger', () => ({
   logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn() },
 }));
 
@@ -25,7 +25,7 @@ function sign(body, secret = SECRET) {
 
 describe('verifyMetaSignature', () => {
   beforeAll(async () => {
-    ({ verifyMetaSignature } = await import('../../../src/services/whatsapp/webhooks/verifier.js'));
+    ({ verifyMetaSignature } = await import('../../../apps/wa-session-manager/webhooks/verifier.js'));
   });
 
   it('retorna true con firma valida', () => {
