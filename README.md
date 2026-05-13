@@ -177,5 +177,3 @@ No correr migraciones desde esta app.
 6. Convertir boundaries canonicos a ESM por grupos.
 7. Agregar resource limits, backups independientes y observabilidad.
 8. Convertir CommonJS restante por boundary completo y completar migracion ESM.
-
-Ver [CLAUDE.md](CLAUDE.md) para el analisis completo y el plan de arquitectura.
