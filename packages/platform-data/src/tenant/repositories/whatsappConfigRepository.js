@@ -5,6 +5,7 @@
 // no existe helper ORM para funciones pgcrypto.
 const { sql, eq }           = require('drizzle-orm');
 const { getDb }             = require('../../drizzle/db');
+const { getDbForTenant }    = require('../database/tenantDb');
 const { tenantWhatsappConfig } = require('../../drizzle/schema');
 const { getRedis }          = require('../../redis');
 const { validateBotConfig } = require('@whatsapp-saas/shared-utils');
@@ -142,4 +143,83 @@ async function deleteConfig(tenantId) {
   }
 }
 
-module.exports = { getConfig, saveConfig, deleteConfig };
+// ── API tenant-aware (preferida para código operativo) ────────────────────────
+// Usa la tenant DB vía tenantContext.dbAllocation.
+// Requiere que la tenant DB tenga pgcrypto habilitado igual que la platform DB.
+
+async function fromDBForTenant(tenantContext) {
+  const db = await getDbForTenant(tenantContext);
+  try {
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL app.current_tenant_id = ${tenantContext.tenantId}`);
+      return tx.execute(sql`
+        SELECT
+          tenant_id,
+          pgp_sym_decrypt(session_data, ${process.env.APP_SECRET})   AS session_data,
+          bot_config,
+          pgp_sym_decrypt(webhook_secret, ${process.env.APP_SECRET}) AS webhook_secret,
+          is_active, created_at, updated_at
+        FROM tenant_whatsapp_config
+        WHERE tenant_id = ${tenantContext.tenantId}::uuid
+      `);
+    });
+    return rows.rows[0] || null;
+  } catch (err) {
+    logger.error({ tenantId: tenantContext.tenantId, err: err.message }, '[ConfigRepo] Error leyendo tenant DB');
+    throw err;
+  }
+}
+
+async function getConfigForTenant(tenantContext) {
+  const cached = await fromCache(tenantContext.tenantId);
+  if (cached) return cached;
+
+  const config = await fromDBForTenant(tenantContext);
+  if (config) await toCache(tenantContext.tenantId, config);
+  return config;
+}
+
+async function saveConfigForTenant(tenantContext, { session_data, bot_config, webhook_secret, is_active }) {
+  const db = await getDbForTenant(tenantContext);
+  const tenantId = tenantContext.tenantId;
+  const validatedBotConfig = bot_config !== undefined ? validateBotConfig(bot_config) : undefined;
+  const secret = process.env.APP_SECRET;
+
+  try {
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL app.current_tenant_id = ${tenantId}`);
+      return tx.execute(sql`
+        INSERT INTO tenant_whatsapp_config
+          (tenant_id, session_data, bot_config, webhook_secret, is_active)
+        VALUES (
+          ${tenantId}::uuid,
+          ${session_data != null ? sql`pgp_sym_encrypt(${session_data}, ${secret})` : sql`NULL`},
+          ${validatedBotConfig ? JSON.stringify(validatedBotConfig) : '{}'}::jsonb,
+          ${webhook_secret != null ? sql`pgp_sym_encrypt(${webhook_secret}, ${secret})` : sql`NULL`},
+          ${is_active ?? true}
+        )
+        ON CONFLICT (tenant_id) DO UPDATE SET
+          session_data   = ${session_data != null
+            ? sql`pgp_sym_encrypt(${session_data}, ${secret})`
+            : sql`tenant_whatsapp_config.session_data`},
+          bot_config     = ${validatedBotConfig
+            ? sql`${JSON.stringify(validatedBotConfig)}::jsonb`
+            : sql`tenant_whatsapp_config.bot_config`},
+          webhook_secret = ${webhook_secret != null
+            ? sql`pgp_sym_encrypt(${webhook_secret}, ${secret})`
+            : sql`tenant_whatsapp_config.webhook_secret`},
+          is_active      = ${is_active ?? sql`tenant_whatsapp_config.is_active`}
+        RETURNING tenant_id, bot_config, is_active, created_at, updated_at
+      `);
+    });
+    await bustCache(tenantId);
+    logger.info({ tenantId }, '[ConfigRepo] Config guardada en tenant DB');
+    return rows.rows[0];
+  } catch (err) {
+    logger.error({ tenantId, err: err.message }, '[ConfigRepo] Error guardando en tenant DB');
+    throw err;
+  }
+}
+
+// Legacy: acepta solo tenantId, usa platform DB. Conservar mientras haya callers sin tenantContext.
+module.exports = { getConfig, saveConfig, deleteConfig, getConfigForTenant, saveConfigForTenant };

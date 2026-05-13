@@ -4,11 +4,35 @@ Estos scripts quedan como utilidades puntuales de administracion. No forman part
 
 ## Scripts activos
 
-- `create-tenant.js`: crea un tenant inicial en la DB de plataforma. Usa `PLATFORM_DATABASE_URL`.
+- `create-tenant.js`: crea un tenant productivo en Platform DB. Tambien crea `tenant_entitlements`, `db_clusters` y `tenant_db_allocations`. Usa `PLATFORM_DATABASE_URL`.
 - `check-token.js`: valida acceso a configuracion de WhatsApp para un tenant.
 - `import-products.js`: importa catalogo desde CSV para un tenant. Usa `TENANT_DATABASE_URL_DEFAULT`.
 - `mark-payment.js`: registra pagos o cambios operativos relacionados con billing. Usa `PLATFORM_DATABASE_URL`.
 - `products-template.csv`: plantilla de importacion de productos.
+
+## SQL operativo
+
+- `infra/postgres/init.sql`: bootstrap completo para entorno nuevo/shared.
+- `infra/postgres/upgrade-platform-tenancy.sql`: upgrade no destructivo para una Platform DB existente.
+- `infra/postgres/tenant-init.sql`: crea solo tablas operativas tenant, util para DB dedicada enterprise.
+
+## Crear tenant
+
+```bash
+node scripts/create-tenant.js \
+  --slug=boutique-ana \
+  --name="Boutique Ana" \
+  --wa-token=EAAxxxxx \
+  --phone-id=123456789 \
+  --owner-phone=573001234567 \
+  --plan=basic
+```
+
+Planes soportados:
+
+- `basic`: sin IA, `shared-low`.
+- `premium`: IA habilitada, `shared-medium`.
+- `enterprise`: IA habilitada, `dedicated-db`.
 
 ## Scripts retirados
 

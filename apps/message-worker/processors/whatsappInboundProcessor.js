@@ -10,7 +10,8 @@ import notifier from '@whatsapp-saas/notifications';
 import loggerModule from '@whatsapp-saas/logger';
 
 const require = createRequire(import.meta.url);
-const { getFlow } = require('../core/flows/index.js');
+const { getFlow }       = require('../core/flows/index.js');
+const { buildServices } = require('../core/ai/services.js');
 
 const tenantLoader = platformData.tenantLoader;
 const { getState, saveState } = stateManager;
@@ -49,11 +50,19 @@ async function dispatch(tenantSlug, webhookBody) {
         logger.info({ tenantSlug, waFrom, type: message.type }, '[Processor] Mensaje recibido');
 
         try {
-          const session    = await getState(tenantSlug, waFrom);
-          const flowType   = tenant.bot_config?.flow_type;
-          const { processMessage } = getFlow(flowType);
-          await processMessage(waFrom, message, session, tenant, notifier);
-          await saveState(tenantSlug, waFrom, session);
+          const session  = await getState(tenant, waFrom);
+          const flowType = tenant.bot_config?.flow_type ?? tenant.botConfig?.flow_type;
+          const { engine, aiCapabilities } = getFlow(flowType);
+          // Shim: flujos legacy usan bot_config/wa_token/phone_number_id (snake_case)
+          const tenantForFlows = {
+            ...tenant,
+            bot_config:      tenant.bot_config      ?? tenant.botConfig,
+            wa_token:        tenant.wa_token        ?? tenant.whatsapp?.token,
+            phone_number_id: tenant.phone_number_id ?? tenant.whatsapp?.phoneNumberId,
+          };
+          const services = buildServices(tenantForFlows, aiCapabilities);
+          await engine.processMessage(waFrom, message, session, tenantForFlows, notifier, services);
+          await saveState(tenant, waFrom, session);
         } catch (err) {
           logger.error({ tenantSlug, waFrom, err: err.message }, '[Processor] Error procesando mensaje');
         }

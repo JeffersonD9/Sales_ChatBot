@@ -31,7 +31,20 @@ router.get('/:slug', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { slug, name, wa_token, phone_number_id, owner_phone, owner_email, bot_config } = req.body || {};
+  const {
+    slug,
+    name,
+    wa_token,
+    phone_number_id,
+    owner_phone,
+    owner_email,
+    bot_config,
+    plan,
+    cluster_code,
+    database_name,
+    schema_name,
+    entitlements,
+  } = req.body || {};
 
   if (!slug || !name || !wa_token || !phone_number_id || !owner_phone) {
     return res.status(400).json({
@@ -53,6 +66,11 @@ router.post('/', async (req, res) => {
       owner_phone,
       owner_email,
       bot_config: bot_config || {},
+      plan,
+      cluster_code,
+      database_name,
+      schema_name,
+      entitlements,
     });
 
     logger.info({ slug }, '[Admin:Tenants] Tenant creado');

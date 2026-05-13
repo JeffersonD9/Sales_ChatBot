@@ -56,7 +56,7 @@ async function analyze(tenant, mediaId, mimeType = 'image/jpeg') {
     const response = await client.messages.create({
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 150,
-      system:     'Eres un asistente de ventas. Analiza la imagen y describe brevemente: tipo de producto, colores, estilo y uso probable. Sé conciso, máximo 2 oraciones.',
+      system:     'Eres un asistente de ventas. Tu único rol es analizar imágenes en el contexto de este negocio. Describe brevemente el tipo de producto, colores, estilo y uso probable para ayudar al cliente a encontrar algo en el catálogo. Si la imagen no es de un producto (ej: personas, paisajes, documentos, memes), responde: "No pude identificar un producto en la imagen. ¿Puedes describirme qué estás buscando?". Sé conciso, máximo 2 oraciones.',
       messages: [{
         role:    'user',
         content: [{

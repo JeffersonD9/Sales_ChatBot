@@ -10,7 +10,7 @@
 
 const { Pool } = require('pg');
 const { drizzle } = require('drizzle-orm/node-postgres');
-const schema = require('../../drizzle/schema');
+const schema = require('../../drizzle/tenantSchema');
 const { logger } = require('@whatsapp-saas/logger');
 const { getDefaultTenantDatabaseUrl } = require('@whatsapp-saas/config/infra.js');
 
@@ -28,6 +28,7 @@ function getDefaultTenantAllocation() {
     allocationId: DEFAULT_ALLOCATION_ID,
     clusterId: DEFAULT_CLUSTER_ID,
     strategy: 'shared-low',
+    tier: 'low',
     databaseUrl: getDefaultTenantDatabaseUrl(),
     poolMax: parseInt(process.env.TENANT_DB_POOL_MAX || '10', 10),
     idleTimeoutMillis: parseInt(process.env.TENANT_DB_IDLE_TIMEOUT_MS || '30000', 10),
@@ -41,6 +42,8 @@ function normalizeAllocation(allocation) {
   merged.allocationId = merged.allocationId || merged.clusterId || fallback.allocationId;
   merged.clusterId = merged.clusterId || merged.allocationId;
   merged.databaseUrl = merged.databaseUrl || fallback.databaseUrl;
+  merged.schemaName = merged.schemaName || 'public';
+  merged.status = merged.status || 'active';
   return merged;
 }
 

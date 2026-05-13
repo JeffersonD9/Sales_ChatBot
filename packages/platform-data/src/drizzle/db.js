@@ -2,7 +2,7 @@
 
 const { drizzle } = require('drizzle-orm/node-postgres');
 const { getPool } = require('../db');
-const schema      = require('./schema');
+const schema      = require('./platformSchema');
 
 let _db = null;
 

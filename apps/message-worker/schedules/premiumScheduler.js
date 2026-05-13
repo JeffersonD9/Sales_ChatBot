@@ -1,3 +1,8 @@
+// TODO(arch/Fase-2): Este scheduler consulta sessions y tenants con query() del pool de
+// plataforma. Las sessions deben vivir en la tenant DB, no en la platform DB. Este archivo
+// requiere migración completa: iterar tenants desde platform DB, resolver tenantContext por
+// cada uno, luego obtener sessions con getDbForTenant(tenantContext). Solo funciona en setups
+// de DB única (dev/staging). Es bloqueante para producción multi-DB.
 import platformData from '../../../packages/platform-data/index.js';
 import senderModule from '../core/whatsapp/sender.js';
 import loggerModule from '@whatsapp-saas/logger';
@@ -128,8 +133,10 @@ export async function runDailySummary() {
 
 export function startScheduler() {
   const recoveryHour = parseInt(process.env.CART_RECOVERY_HOUR || '9', 10);
-  const summaryHour = parseInt(process.env.DAILY_SUMMARY_HOUR || '20', 10);
+  const summaryHour  = parseInt(process.env.DAILY_SUMMARY_HOUR  || '20', 10);
 
+  // TODO(arch/Fase-2): Antes de habilitar en producción multi-DB, migrar runCartRecovery y
+  // runDailySummary para obtener sessions desde la tenant DB de cada tenant.
   setTimeout(function runRecovery() {
     runCartRecovery();
     setTimeout(runRecovery, 24 * 60 * 60 * 1000);
@@ -140,5 +147,5 @@ export function startScheduler() {
     setTimeout(runSummary, 24 * 60 * 60 * 1000);
   }, msUntilHour(summaryHour));
 
-  logger.info({ recoveryHour, summaryHour }, '[Scheduler] Premium IA scheduler iniciado');
+  logger.info({ recoveryHour, summaryHour }, '[Scheduler] Premium scheduler iniciado');
 }

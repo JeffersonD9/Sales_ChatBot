@@ -114,6 +114,15 @@ function buildSalesPrompt(tenant) {
   prompt += `• No repitas el saludo en cada mensaje\n`;
   prompt += `• Responde en el mismo idioma del cliente\n`;
 
+  // ── Guardrail de contexto ──────────────────────────────────────────────────
+  const redirectMsg = persona.off_topic_redirect ||
+    `Solo puedo ayudarte con temas de ${biz}: productos, pedidos, precios y atención al cliente. ¿En qué te puedo ayudar hoy?`;
+  prompt += `\nLímite de contexto (CRÍTICO):\n`;
+  prompt += `• Tu único rol es asistente de ventas de ${biz}. SOLO puedes responder sobre: productos del catálogo, pedidos, precios, tallas, disponibilidad, tiempos de entrega, formas de pago y atención al cliente de este negocio.\n`;
+  prompt += `• Si el cliente pregunta algo fuera de ese contexto (recetas, código, historia, política, deportes, entretenimiento, consejos personales, temas generales de cualquier tipo u otro negocio), NO respondas el tema. Redirígelo amablemente con: "${redirectMsg}"\n`;
+  prompt += `• NUNCA actúes como asistente general, ChatGPT, enciclopedia ni motor de búsqueda.\n`;
+  prompt += `• Si el cliente insiste en temas fuera de contexto, repite la redirección con amabilidad pero sin ceder.\n`;
+
   if (persona.forbidden_topics?.length) {
     prompt += `• Temas que NO debes mencionar: ${persona.forbidden_topics.join(', ')}\n`;
   }

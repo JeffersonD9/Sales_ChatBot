@@ -3,35 +3,40 @@
 /**
  * flows/index.js — Registro de flujos de conversación
  *
- * Cada entrada mapea un valor de `tenant.bot_config.flow_type` a su engine.
- * El engine debe exportar: { processMessage(phone, rawMsg, session, tenant, notifier) }
+ * Cómo agregar un flow nuevo:
+ *   1. Crear flows/custom/<client-slug>/engine.js
+ *   2. Exportar: { processMessage(phone, rawMsg, session, tenant, notifier, services) }
+ *   3. Agregar la entrada en FLOWS_REGISTRY con aiCapabilities: []
  *
- * Para agregar un flow nuevo:
- *   1. Crear la carpeta flows/<nombre>/ con su engine.js
- *   2. Agregar la entrada en FLOWS_REGISTRY
- *
- * Para un cliente con flow custom:
- *   flows/custom/<client-slug>/engine.js
+ * aiCapabilities declara qué puede usar el flow si el tenant lo tiene habilitado.
+ * Opciones disponibles: 'imageAnalysis'
+ * El flow recibe services.ai?.analyzeImage — null si no aplica.
  */
 
 const FLOWS_REGISTRY = {
-  sales_v1:        () => require('./sales-v1/engine'),
-  mayoristas:      () => require('./custom/mayoristas/engine'),
-  hollywood_store: () => require('./custom/hollywood-store/engine'),
+  sales_v1: {
+    load:           () => require('./sales-v1/engine'),
+    aiCapabilities: ['imageAnalysis'],
+  },
+  mayoristas: {
+    load:           () => require('./custom/mayoristas/engine'),
+    aiCapabilities: [],
+  },
+  hollywood_store: {
+    load:           () => require('./custom/hollywood-store/engine'),
+    aiCapabilities: ['imageAnalysis'],
+  },
 };
 
 const DEFAULT_FLOW = 'sales_v1';
 
 /**
- * Retorna el engine del flow correspondiente al tenant.
- * Si el flow_type no existe en el registro, usa el flow por defecto.
- *
- * @param {string|undefined} flowType - valor de tenant.bot_config?.flow_type
- * @returns {{ processMessage: Function }}
+ * @param {string|undefined} flowType
+ * @returns {{ engine: object, aiCapabilities: string[] }}
  */
 function getFlow(flowType) {
-  const loader = FLOWS_REGISTRY[flowType] || FLOWS_REGISTRY[DEFAULT_FLOW];
-  return loader();
+  const entry = FLOWS_REGISTRY[flowType] || FLOWS_REGISTRY[DEFAULT_FLOW];
+  return { engine: entry.load(), aiCapabilities: entry.aiCapabilities };
 }
 
 module.exports = { getFlow, DEFAULT_FLOW };

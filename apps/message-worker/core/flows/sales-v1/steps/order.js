@@ -6,10 +6,9 @@ const { STEP }                                   = require('@whatsapp-saas/share
 const { formatPrice, capitalizeName }             = require('@whatsapp-saas/shared-utils');
 const { sendText, sendInteractiveButtons }        = require('../../../whatsapp/sender');
 const { getStoreInfo }                            = require('../../../catalog');
-const { db }                                      = require('../../../../../../packages/platform-data');
+const { sql }                                     = require('drizzle-orm');
+const { getDbForTenant }                          = require('../../../../../../packages/platform-data/src/tenant/database/tenantDb');
 const { logger }                                  = require('@whatsapp-saas/logger');
-
-const { query } = db;
 
 const PAYMENT_LABELS = {
   PAY_EFECTIVO:      'Contraentrega en efectivo',
@@ -105,16 +104,16 @@ async function handleCheckOrder(phone, session, txt, tenant) {
 
   try {
     if (process.env.DEMO_MODE !== 'true' && process.env.NODE_ENV !== 'test') {
-      const result = await query(
-        `SELECT o.id, o.status, o.created_at, o.items
-         FROM orders o
-         JOIN tenants t ON o.tenant_id = t.id
-         WHERE t.slug = $1
-           AND (o.customer_phone = $2 OR o.customer_name ILIKE $3)
-         ORDER BY o.created_at DESC
-         LIMIT 1`,
-        [tenant.slug, phone, `%${txt}%`]
-      );
+      const tenantId = tenant.tenantId ?? tenant.id;
+      const db = await getDbForTenant(tenant);
+      const result = await db.execute(sql`
+        SELECT id, status, created_at, items
+        FROM orders
+        WHERE tenant_id = ${tenantId}::uuid
+          AND (customer_phone = ${phone} OR customer_name ILIKE ${'%' + txt + '%'})
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
 
       if (result.rows[0]) {
         const order = result.rows[0];
@@ -148,24 +147,23 @@ async function handleCheckOrder(phone, session, txt, tenant) {
 async function _saveOrder(session, phone, tenant, orderData, total) {
   if (process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test') return;
   try {
-    await query(
-      `INSERT INTO orders
-         (tenant_id, customer_phone, customer_name, customer_address,
-          items, payment_method, total, status)
-       VALUES (
-         (SELECT id FROM tenants WHERE slug = $1),
-         $2, $3, $4, $5, $6, $7, 'pending'
-       )`,
-      [
-        tenant.slug,
-        phone,
-        orderData.name,
-        orderData.address,
-        JSON.stringify(orderData.products),
-        orderData.payment,
-        total,
-      ]
-    );
+    const tenantId = tenant.tenantId ?? tenant.id;
+    const db = await getDbForTenant(tenant);
+    await db.execute(sql`
+      INSERT INTO orders
+        (tenant_id, customer_phone, customer_name, customer_address,
+         items, payment_method, total, status)
+      VALUES (
+        ${tenantId}::uuid,
+        ${phone},
+        ${orderData.name},
+        ${orderData.address},
+        ${JSON.stringify(orderData.products)}::jsonb,
+        ${orderData.payment},
+        ${total},
+        'pending'
+      )
+    `);
   } catch (err) {
     logger.error({ tenantSlug: tenant.slug, phone, err: err.message }, '[Order] Error guardando pedido en DB');
   }

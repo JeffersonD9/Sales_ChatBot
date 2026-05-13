@@ -8,19 +8,21 @@
  *   L2 (PostgreSQL): UPSERT en cada saveState — durabilidad en cada mensaje
  *
  * Clave de aislamiento multitenant: `{tenantSlug}:{waFrom}`
+ * Acceso DB: siempre vía getDbForTenant(tenantContext) → tenant DB.
  *
  * En DEMO_MODE o NODE_ENV=test: solo L1, sin DB.
  */
 
 const { eq, and, sql } = require('drizzle-orm');
-const { drizzle, schema } = require('../../../../packages/platform-data');
+const platformData = require('../../../../packages/platform-data');
+const { schema } = platformData;
 const { logger }       = require('@whatsapp-saas/logger');
 
-const { getDb } = drizzle;
 const { sessions: sessionsTable, tenants } = schema;
 
 /** @type {Map<string, object>} L1 cache */
 const sessions = new Map();
+let dbOverride = null;
 
 /**
  * Promesas en vuelo para getState: evita queries duplicadas ante mensajes
@@ -29,15 +31,35 @@ const sessions = new Map();
  */
 const pending = new Map();
 
-const isDemo = () => process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test';
+const isDemo = () => !dbOverride && process.env.DEMO_MODE === 'true'
+  || (process.env.NODE_ENV === 'test' && process.env.DEMO_MODE !== 'false');
 
 function _key(tenantSlug, waFrom) {
   return `${tenantSlug}:${waFrom}`;
 }
 
-function _defaultSession(tenantSlug, waFrom) {
+function _tenantContext(input) {
+  if (typeof input === 'string') {
+    return { slug: input, tenantId: null, dbAllocation: null, legacyDb: true };
+  }
   return {
-    tenantSlug,
+    ...input,
+    tenantId: input?.tenantId ?? input?.id ?? null,
+    legacyDb: !input?.dbAllocation,
+  };
+}
+
+async function _dbForTenantContext(tenantContext) {
+  if (dbOverride) return dbOverride;
+  if (tenantContext.dbAllocation) {
+    return platformData.tenantDb.getDbForTenant(tenantContext);
+  }
+  return platformData.drizzle.getDb();
+}
+
+function _defaultSession(tenantContext, waFrom) {
+  return {
+    tenantSlug:       tenantContext.slug,
     waFrom,
     step:             'NEW',
     data:             {},
@@ -50,8 +72,13 @@ function _defaultSession(tenantSlug, waFrom) {
 
 // ── API pública ───────────────────────────────────────────────────────────────
 
-async function getState(tenantSlug, waFrom) {
-  const key = _key(tenantSlug, waFrom);
+/**
+ * @param {object} tenantContext  Contrato completo del tenant (requiere .slug y .dbAllocation).
+ * @param {string} waFrom         Número WhatsApp del usuario.
+ */
+async function getState(tenantContext, waFrom) {
+  const tenant = _tenantContext(tenantContext);
+  const key = _key(tenant.slug, waFrom);
 
   if (sessions.has(key)) return sessions.get(key);
   if (pending.has(key))  return pending.get(key);
@@ -59,25 +86,34 @@ async function getState(tenantSlug, waFrom) {
   if (!isDemo()) {
     const promise = (async () => {
       try {
-        const db   = getDb();
-        const rows = await db
+        const db = await _dbForTenantContext(tenant);
+        const baseSelect = db
           .select({
-            step:             sessionsTable.step,
-            data:             sessionsTable.data,
-            shown_products:   sessionsTable.shown_products,
-            last_activity:    sessionsTable.last_activity,
+            step:              sessionsTable.step,
+            data:              sessionsTable.data,
+            shown_products:    sessionsTable.shown_products,
+            last_activity:     sessionsTable.last_activity,
             reactivation_sent: sessionsTable.reactivation_sent,
-            created_at:       sessionsTable.created_at,
+            created_at:        sessionsTable.created_at,
           })
-          .from(sessionsTable)
-          .innerJoin(tenants, eq(tenants.id, sessionsTable.tenant_id))
-          .where(and(eq(tenants.slug, tenantSlug), eq(sessionsTable.wa_from, waFrom)))
-          .limit(1);
+          .from(sessionsTable);
+
+        const rows = tenant.tenantId
+          ? await baseSelect
+            .where(and(
+              eq(sessionsTable.tenant_id, tenant.tenantId),
+              eq(sessionsTable.wa_from, waFrom),
+            ))
+            .limit(1)
+          : await baseSelect
+            .innerJoin(tenants, eq(tenants.id, sessionsTable.tenant_id))
+            .where(and(eq(tenants.slug, tenant.slug), eq(sessionsTable.wa_from, waFrom)))
+            .limit(1);
 
         if (rows[0]) {
           const row     = rows[0];
           const session = {
-            tenantSlug,
+            tenantSlug:       tenant.slug,
             waFrom,
             step:             row.step,
             data:             row.data || {},
@@ -90,12 +126,12 @@ async function getState(tenantSlug, waFrom) {
           return session;
         }
       } catch (err) {
-        logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error leyendo sesión de DB');
+        logger.error({ tenantSlug: tenant.slug, waFrom, err: err.message }, '[State] Error leyendo sesión de DB');
       } finally {
         pending.delete(key);
       }
 
-      const session = _defaultSession(tenantSlug, waFrom);
+      const session = _defaultSession(tenant, waFrom);
       sessions.set(key, session);
       return session;
     })();
@@ -104,61 +140,71 @@ async function getState(tenantSlug, waFrom) {
     return promise;
   }
 
-  const session = _defaultSession(tenantSlug, waFrom);
+  const session = _defaultSession(tenant, waFrom);
   sessions.set(key, session);
   return session;
 }
 
-async function saveState(tenantSlug, waFrom, session) {
+async function saveState(tenantContext, waFrom, session) {
+  const tenant = _tenantContext(tenantContext);
   session.lastActivity     = Date.now();
   session.reactivationSent = false;
 
-  const key = _key(tenantSlug, waFrom);
+  const key = _key(tenant.slug, waFrom);
   sessions.set(key, session);
 
   if (isDemo()) return;
 
   try {
-    const db = getDb();
+    const db = await _dbForTenantContext(tenant);
+    const tenantIdSql = tenant.tenantId
+      ? sql`${tenant.tenantId}::uuid`
+      : sql`(SELECT id FROM tenants WHERE slug = ${tenant.slug})`;
+
     await db.execute(sql`
-      INSERT INTO sessions
-        (tenant_id, wa_from, step, data, shown_products, last_activity, reactivation_sent)
-      VALUES (
-        (SELECT id FROM tenants WHERE slug = ${tenantSlug}),
-        ${waFrom},
-        ${session.step},
-        ${JSON.stringify(session.data)}::jsonb,
-        ${JSON.stringify(session.shownProducts)}::jsonb,
-        to_timestamp(${session.lastActivity} / 1000.0),
-        ${session.reactivationSent}
-      )
-      ON CONFLICT (tenant_id, wa_from) DO UPDATE SET
-        step              = ${session.step},
-        data              = ${JSON.stringify(session.data)}::jsonb,
-        shown_products    = ${JSON.stringify(session.shownProducts)}::jsonb,
-        last_activity     = to_timestamp(${session.lastActivity} / 1000.0),
-        reactivation_sent = ${session.reactivationSent}
-    `);
+        INSERT INTO sessions
+          (tenant_id, wa_from, step, data, shown_products, last_activity, reactivation_sent)
+        VALUES (
+          ${tenantIdSql},
+          ${waFrom},
+          ${session.step},
+          ${JSON.stringify(session.data)}::jsonb,
+          ${JSON.stringify(session.shownProducts)}::jsonb,
+          to_timestamp(${session.lastActivity} / 1000.0),
+          ${session.reactivationSent}
+        )
+        ON CONFLICT (tenant_id, wa_from) DO UPDATE SET
+          step              = ${session.step},
+          data              = ${JSON.stringify(session.data)}::jsonb,
+          shown_products    = ${JSON.stringify(session.shownProducts)}::jsonb,
+          last_activity     = to_timestamp(${session.lastActivity} / 1000.0),
+          reactivation_sent = ${session.reactivationSent}
+      `);
   } catch (err) {
-    logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error persistiendo sesión en DB');
+    logger.error({ tenantSlug: tenant.slug, waFrom, err: err.message }, '[State] Error persistiendo sesión en DB');
   }
 }
 
-async function clearState(tenantSlug, waFrom) {
-  const key = _key(tenantSlug, waFrom);
+async function clearState(tenantContext, waFrom) {
+  const tenant = _tenantContext(tenantContext);
+  const key = _key(tenant.slug, waFrom);
   sessions.delete(key);
 
   if (isDemo()) return;
 
   try {
-    const db = getDb();
+    const db = await _dbForTenantContext(tenant);
+    const tenantPredicate = tenant.tenantId
+      ? sql`tenant_id = ${tenant.tenantId}::uuid`
+      : sql`tenant_id = (SELECT id FROM tenants WHERE slug = ${tenant.slug})`;
+
     await db.execute(sql`
-      DELETE FROM sessions
-      WHERE tenant_id = (SELECT id FROM tenants WHERE slug = ${tenantSlug})
-        AND wa_from = ${waFrom}
-    `);
+        DELETE FROM sessions
+        WHERE ${tenantPredicate}
+          AND wa_from = ${waFrom}
+      `);
   } catch (err) {
-    logger.error({ tenantSlug, waFrom, err: err.message }, '[State] Error eliminando sesión');
+    logger.error({ tenantSlug: tenant.slug, waFrom, err: err.message }, '[State] Error eliminando sesión');
   }
 }
 
@@ -175,6 +221,11 @@ function getActiveSessions(tenantSlug) {
 function _resetForTest() {
   sessions.clear();
   pending.clear();
+  dbOverride = null;
 }
 
-module.exports = { getState, saveState, clearState, getActiveSessions, _resetForTest };
+function _setDbForTest(db) {
+  dbOverride = db;
+}
+
+module.exports = { getState, saveState, clearState, getActiveSessions, _resetForTest, _setDbForTest };

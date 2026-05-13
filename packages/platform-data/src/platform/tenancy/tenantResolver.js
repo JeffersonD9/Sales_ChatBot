@@ -11,9 +11,47 @@
 const { eq, and } = require('drizzle-orm');
 const { getPlatformDb } = require('../database/platformDb');
 const { getDefaultTenantAllocation, normalizeAllocation } = require('../database/connectionManager');
-const { tenants, tenantDbAllocations, dbClusters } = require('../../drizzle/schema');
+const {
+  tenants,
+  tenantDbAllocations,
+  dbClusters,
+  tenantEntitlements,
+} = require('../../drizzle/platformSchema');
 const { decrypt } = require('@whatsapp-saas/shared-utils');
 const { logger } = require('@whatsapp-saas/logger');
+
+const PLAN_DEFAULTS = {
+  basic: {
+    aiEnabled: false,
+    dailyMessageLimit: 500,
+    dailyAiReplyLimit: 0,
+    dailyAiTokenLimit: 0,
+    allocationStrategy: 'shared-low',
+    tier: 'low',
+  },
+  premium: {
+    aiEnabled: true,
+    dailyMessageLimit: 3000,
+    dailyAiReplyLimit: 500,
+    dailyAiTokenLimit: 1000000,
+    allocationStrategy: 'shared-medium',
+    tier: 'medium',
+  },
+  enterprise: {
+    aiEnabled: true,
+    dailyMessageLimit: 20000,
+    dailyAiReplyLimit: 5000,
+    dailyAiTokenLimit: 10000000,
+    allocationStrategy: 'dedicated-db',
+    tier: 'enterprise',
+  },
+};
+
+function _normalizePlan(plan) {
+  if (plan === 'starter') return 'basic';
+  if (PLAN_DEFAULTS[plan]) return plan;
+  return 'basic';
+}
 
 function _decryptClusterUrl(row) {
   if (!row.database_url_encrypted) return null;
@@ -27,12 +65,17 @@ function _decryptClusterUrl(row) {
 
 function _allocationFromTenant(row) {
   const fallback = getDefaultTenantAllocation();
+  const plan = _normalizePlan(row.plan);
+  const planDefaults = PLAN_DEFAULTS[plan];
+  const strategy = row.allocation_strategy || row.cluster_strategy || planDefaults.allocationStrategy;
+  const clusterId = row.cluster_code || row.db_shard || fallback.clusterId;
+
   return normalizeAllocation({
     ...fallback,
-    allocationId: row.cluster_code || row.db_shard || fallback.allocationId,
-    clusterId: row.cluster_code || row.db_shard || fallback.clusterId,
-    strategy: row.allocation_strategy || fallback.strategy,
-    tier: row.cluster_tier || fallback.tier,
+    allocationId: row.cluster_code || row.database_name || row.db_shard || fallback.allocationId,
+    clusterId,
+    strategy,
+    tier: row.cluster_tier || planDefaults.tier || fallback.tier,
     databaseUrl: _decryptClusterUrl(row) || fallback.databaseUrl,
     databaseName: row.database_name || null,
     schemaName: row.schema_name || 'public',
@@ -42,10 +85,37 @@ function _allocationFromTenant(row) {
 
 function _featureFlags(row) {
   const config = row.bot_config || {};
+  const plan = _normalizePlan(row.plan);
+  const planDefaults = PLAN_DEFAULTS[plan];
+  const entitlementAi = row.entitlement_ai_enabled;
+  const planAllowsAi = Boolean(planDefaults.aiEnabled);
+  const tenantAllowsAi = entitlementAi !== null && entitlementAi !== undefined
+    ? Boolean(entitlementAi)
+    : planAllowsAi;
+  const aiEnabled = process.env.AI_ENABLED !== 'false'
+    && planAllowsAi
+    && tenantAllowsAi
+    && config.ai_enabled !== false;
+
   return {
-    aiEnabled: process.env.AI_ENABLED !== 'false' && Boolean(config.ai_enabled || ['premium', 'enterprise'].includes(row.plan)),
-    embeddingsEnabled: Boolean(config.embeddings_enabled),
+    aiEnabled,
+    imageAnalysisEnabled: aiEnabled && Boolean(config.image_analysis_enabled),
+    audioTranscriptionEnabled: aiEnabled && Boolean(config.audio_transcription_enabled),
+    embeddingsEnabled: aiEnabled && Boolean(config.embeddings_enabled),
     workflowsEnabled: Boolean(config.workflows_enabled),
+  };
+}
+
+function _limits(row) {
+  const plan = _normalizePlan(row.plan);
+  const defaults = PLAN_DEFAULTS[plan];
+  const aiEnabled = _featureFlags(row).aiEnabled;
+
+  return {
+    dailyMessages: row.daily_message_limit ?? defaults.dailyMessageLimit,
+    dailyAiReplies: aiEnabled ? (row.daily_ai_reply_limit ?? defaults.dailyAiReplyLimit) : 0,
+    dailyAiTokens: aiEnabled ? (row.daily_ai_token_limit ?? defaults.dailyAiTokenLimit) : 0,
+    overageEnabled: Boolean(row.overage_enabled),
   };
 }
 
@@ -68,6 +138,11 @@ async function resolveTenantBySlug(slug) {
       plan: tenants.plan,
       subscription_status: tenants.subscription_status,
       meta_live: tenants.meta_live,
+      entitlement_ai_enabled: tenantEntitlements.ai_enabled,
+      daily_message_limit: tenantEntitlements.daily_message_limit,
+      daily_ai_reply_limit: tenantEntitlements.daily_ai_reply_limit,
+      daily_ai_token_limit: tenantEntitlements.daily_ai_token_limit,
+      overage_enabled: tenantEntitlements.overage_enabled,
       allocation_strategy: tenantDbAllocations.allocation_strategy,
       database_name: tenantDbAllocations.database_name,
       schema_name: tenantDbAllocations.schema_name,
@@ -78,6 +153,7 @@ async function resolveTenantBySlug(slug) {
       database_url_encrypted: dbClusters.database_url_encrypted,
     })
     .from(tenants)
+    .leftJoin(tenantEntitlements, eq(tenantEntitlements.tenant_id, tenants.id))
     .leftJoin(tenantDbAllocations, eq(tenantDbAllocations.tenant_id, tenants.id))
     .leftJoin(dbClusters, eq(dbClusters.id, tenantDbAllocations.cluster_id))
     .where(and(eq(tenants.slug, slug), eq(tenants.status, 'active')))
@@ -93,15 +169,19 @@ async function resolveTenantBySlug(slug) {
     logger.error({ tenantSlug: slug, err: err.message }, '[TenantResolver] Error desencriptando wa_token');
   }
 
+  const plan = _normalizePlan(row.plan);
+  const features = _featureFlags(row);
+
   return {
     tenantId: row.id,
     slug: row.slug,
     name: row.name,
     status: row.status,
-    plan: row.plan || 'starter',
+    plan,
     subscriptionStatus: row.subscription_status,
     dbAllocation: _allocationFromTenant(row),
-    features: _featureFlags(row),
+    features,
+    limits: _limits(row),
     whatsapp: {
       token: waToken,
       phoneNumberId: row.phone_number_id,
@@ -124,9 +204,15 @@ function toLegacyTenant(context, tenantData = {}) {
     name: context.name,
     status: context.status,
     plan: context.plan,
+    tenantId: context.tenantId,
+    subscriptionStatus: context.subscriptionStatus,
     subscription_status: context.subscriptionStatus,
     dbAllocation: context.dbAllocation,
     features: context.features,
+    limits: context.limits,
+    whatsapp: context.whatsapp,
+    owner: context.owner,
+    botConfig: context.botConfig,
     wa_token: context.whatsapp.token,
     phone_number_id: context.whatsapp.phoneNumberId,
     verify_token: context.whatsapp.verifyToken,

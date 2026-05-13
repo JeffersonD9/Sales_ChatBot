@@ -48,6 +48,9 @@ const {
   sendInteractiveButtons,
   sendInteractiveList,
 } = require('../../../whatsapp/sender');
+const { sql } = require('drizzle-orm');
+const { getDbForTenant } = require('../../../../../../packages/platform-data/src/tenant/database/tenantDb');
+const { logger } = require('@whatsapp-saas/logger');
 
 // ── Steps locales (prefijo HS_ para no colisionar con STEP global) ─────────
 const S = {
@@ -467,6 +470,7 @@ async function handleOrderConfirm(phone, session, txt, id, tenant, notifier) {
   );
 
   setImmediate(() => notifier.notifySale(phone, session.data, tenant));
+  setImmediate(() => saveOrder(phone, session.data, tenant));
 
   // Reset parcial
   const name = session.data.name;
@@ -494,13 +498,62 @@ async function sendMainMenu(phone, session, tenant) {
   );
 }
 
+// ── Búsqueda visual con IA ────────────────────────────────────────────────
+
+async function handleImageSearch(phone, rawMsg, session, tenant, services) {
+  if (!services?.ai?.analyzeImage) {
+    await sendText(phone,
+      '📸 ¡Vi tu foto! Para encontrar algo similar escríbeme qué talla y cuántas unidades necesitas, o escribe *menú* para ver las opciones.',
+      tenant
+    );
+    return;
+  }
+
+  await sendText(phone, '🔍 Analizando tu foto, un momento...', tenant);
+
+  const parsed  = extractInput(rawMsg);
+  const caption = rawMsg.image?.caption?.trim() || '';
+
+  const description = await services.ai.analyzeImage(parsed.mediaId, parsed.mimeType);
+
+  if (!description) {
+    await sendText(phone,
+      '📸 No pude analizar bien la foto. ¿Puedes describirme qué estás buscando? (color, estilo, talla)',
+      tenant
+    );
+    return;
+  }
+
+  let intro = `🔍 *Lo que vi en tu foto:*\n${description}`;
+  if (caption) intro += `\n\n💬 *Tu mensaje:* "${caption}"`;
+  intro += '\n\nTe muestro nuestro catálogo completo para que elijas algo similar 👇';
+
+  await sendText(phone, intro, tenant);
+
+  const fotos = imagenescatalogo(tenant);
+  for (const url of fotos) {
+    await sendImage(phone, url, '', tenant);
+  }
+
+  session.step = S.ORDER_REF;
+  await sendText(phone,
+    '¿Te gustó alguna? Escríbeme el *N° de referencia* de la pantaloneta que quieres pedir.\n_Ej: REF-205_',
+    tenant
+  );
+}
+
 // ── Dispatcher principal ──────────────────────────────────────────────────
 
-async function processMessage(phone, rawMsg, session, tenant, notifier) {
+async function processMessage(phone, rawMsg, session, tenant, notifier, services = {}) {
   const parsed = extractInput(rawMsg);
   const { type, text, interactiveId } = parsed;
 
-  if (type === 'audio' || type === 'image' || type === 'unsupported') {
+  if (type === 'image') {
+    await handleImageSearch(phone, rawMsg, session, tenant, services);
+    return;
+  }
+
+  if (type === 'audio' || type === 'unsupported') {
     await sendText(phone, '📱 Solo proceso mensajes de texto y botones. Escribe *menú* para continuar.', tenant);
     return;
   }
@@ -582,6 +635,48 @@ async function processMessage(phone, rawMsg, session, tenant, notifier) {
 
     default:
       await sendMainMenu(phone, session, tenant);
+  }
+}
+
+async function saveOrder(phone, data, tenant) {
+  if (process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test') return;
+
+  try {
+    const tenantId = tenant.tenantId ?? tenant.id;
+    const db = await getDbForTenant(tenant);
+    const items = [{
+      reference: data.referencia,
+      size: data.talla,
+      quantity: data.cantidad,
+      type: data.tipo,
+      order_number: data.order_number,
+    }];
+
+    await db.execute(sql`
+      INSERT INTO orders (
+        tenant_id,
+        customer_phone,
+        customer_name,
+        customer_address,
+        items,
+        payment_method,
+        total,
+        status
+      )
+      VALUES (
+        ${tenantId}::uuid,
+        ${phone},
+        ${data.name},
+        ${data.address},
+        ${JSON.stringify(items)}::jsonb,
+        ${data.payment},
+        0,
+        'pending'
+      )
+    `);
+  } catch (err) {
+    // El pedido ya fue confirmado al cliente; no rompemos el flujo por un fallo async.
+    logger.error({ tenantSlug: tenant.slug, phone, err: err.message }, '[HollywoodStore] Error guardando pedido');
   }
 }
 

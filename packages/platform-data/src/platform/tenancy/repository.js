@@ -3,8 +3,9 @@
 const { randomBytes }  = require('crypto');
 const { eq, and, sql } = require('drizzle-orm');
 const { getDb }        = require('../../drizzle/db');
-const { tenants } = require('../../drizzle/schema');
+const { tenants } = require('../../drizzle/platformSchema');
 const { resolveTenantBySlug, toLegacyTenant } = require('./tenantResolver');
+const { provisionTenant, normalizePlan } = require('./provisioning');
 const { listActiveProducts } = require('../../tenant/repositories/catalogRepository');
 
 /**
@@ -46,28 +47,42 @@ async function generateUniqueVerifyToken(slug) {
  */
 async function create(data) {
   const db = getDb();
+  const plan = normalizePlan(data.plan);
 
-  const rows = await db
-    .insert(tenants)
-    .values({
-      slug:               data.slug,
-      name:               data.name,
-      wa_token_encrypted: data.wa_token_encrypted,
-      phone_number_id:    data.phone_number_id,
-      verify_token:       data.verify_token,
-      owner_phone:        data.owner_phone,
-      owner_email:        data.owner_email || null,
-      bot_config:         data.bot_config || {},
-    })
-    .returning({
-      id:         tenants.id,
-      slug:       tenants.slug,
-      name:       tenants.name,
-      status:     tenants.status,
-      created_at: tenants.created_at,
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .insert(tenants)
+      .values({
+        slug:               data.slug,
+        name:               data.name,
+        wa_token_encrypted: data.wa_token_encrypted,
+        phone_number_id:    data.phone_number_id,
+        verify_token:       data.verify_token,
+        owner_phone:        data.owner_phone,
+        owner_email:        data.owner_email || null,
+        bot_config:         data.bot_config || {},
+        plan,
+      })
+      .returning({
+        id:         tenants.id,
+        slug:       tenants.slug,
+        name:       tenants.name,
+        status:     tenants.status,
+        plan:       tenants.plan,
+        created_at: tenants.created_at,
+      });
+
+    const tenant = rows[0];
+    const provisioning = await provisionTenant(tx, tenant, {
+      plan,
+      clusterCode: data.cluster_code,
+      databaseName: data.database_name,
+      schemaName: data.schema_name,
+      entitlements: data.entitlements,
     });
 
-  return rows[0];
+    return { ...tenant, provisioning };
+  });
 }
 
 /**
@@ -78,7 +93,7 @@ async function update(slug, fields) {
 
   const allowed = ['name', 'wa_token_encrypted', 'phone_number_id', 'verify_token',
                    'owner_phone', 'owner_email', 'bot_config', 'status',
-                   'meta_live', 'meta_connected_at'];
+                   'meta_live', 'meta_connected_at', 'plan'];
 
   const patch = {};
   for (const k of allowed) {
