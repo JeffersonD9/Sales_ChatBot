@@ -119,7 +119,7 @@ function _limits(row) {
   };
 }
 
-async function resolveTenantBySlug(slug) {
+async function _resolveTenant(whereClause, logContext = {}) {
   const db = getPlatformDb();
 
   const rows = await db
@@ -156,7 +156,7 @@ async function resolveTenantBySlug(slug) {
     .leftJoin(tenantEntitlements, eq(tenantEntitlements.tenant_id, tenants.id))
     .leftJoin(tenantDbAllocations, eq(tenantDbAllocations.tenant_id, tenants.id))
     .leftJoin(dbClusters, eq(dbClusters.id, tenantDbAllocations.cluster_id))
-    .where(and(eq(tenants.slug, slug), eq(tenants.status, 'active')))
+    .where(and(whereClause, eq(tenants.status, 'active')))
     .limit(1);
 
   const row = rows[0];
@@ -166,7 +166,7 @@ async function resolveTenantBySlug(slug) {
   try {
     waToken = row.wa_token_encrypted ? decrypt(row.wa_token_encrypted) : '';
   } catch (err) {
-    logger.error({ tenantSlug: slug, err: err.message }, '[TenantResolver] Error desencriptando wa_token');
+    logger.error({ ...logContext, tenantSlug: row.slug, err: err.message }, '[TenantResolver] Error desencriptando wa_token');
   }
 
   const plan = _normalizePlan(row.plan);
@@ -194,6 +194,14 @@ async function resolveTenantBySlug(slug) {
     },
     botConfig: row.bot_config || {},
   };
+}
+
+async function resolveTenantBySlug(slug) {
+  return _resolveTenant(eq(tenants.slug, slug), { tenantSlug: slug });
+}
+
+async function resolveTenantById(tenantId) {
+  return _resolveTenant(eq(tenants.id, tenantId), { tenantId });
 }
 
 function toLegacyTenant(context, tenantData = {}) {
@@ -224,6 +232,7 @@ function toLegacyTenant(context, tenantData = {}) {
 }
 
 module.exports = {
+  resolveTenantById,
   resolveTenantBySlug,
   toLegacyTenant,
 };

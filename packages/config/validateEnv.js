@@ -21,11 +21,15 @@ function validateEnv() {
 
   const missing = required.filter((key) => !process.env[key]);
 
-  if (!isDemoOrTest() && !getPlatformDatabaseUrl()) {
+  if (!isDemoOrTest() && process.env.NODE_ENV === 'production' && !process.env.PLATFORM_DATABASE_URL) {
+    missing.push('PLATFORM_DATABASE_URL');
+  } else if (!isDemoOrTest() && !getPlatformDatabaseUrl()) {
     missing.push('PLATFORM_DATABASE_URL or DATABASE_URL');
   }
 
-  if (!isDemoOrTest() && !getDefaultTenantDatabaseUrl()) {
+  if (!isDemoOrTest() && process.env.NODE_ENV === 'production' && !process.env.TENANT_DATABASE_URL_DEFAULT) {
+    missing.push('TENANT_DATABASE_URL_DEFAULT');
+  } else if (!isDemoOrTest() && !getDefaultTenantDatabaseUrl()) {
     missing.push('TENANT_DATABASE_URL_DEFAULT or DATABASE_URL');
   }
 

@@ -26,11 +26,12 @@
  *                                Joyas:   {"metal":"oro 18k","piedra":"esmeralda"}
  */
 
-require('dotenv').config();
+import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import platformData from '../packages/platform-data/index.js';
 
-const fs   = require('fs');
-const path = require('path');
-const { Pool } = require('pg');
+dotenv.config();
 
 // ── Parser CSV sin dependencias externas ─────────────────────────────────────
 // Maneja campos entre comillas, comillas escapadas ("") y campos vacíos.
@@ -150,24 +151,18 @@ async function main() {
     process.exit(1);
   }
 
-  const databaseUrl = process.env.TENANT_DATABASE_URL_DEFAULT || process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('Falta TENANT_DATABASE_URL_DEFAULT para importar productos.');
+  if (!process.env.PLATFORM_DATABASE_URL && !process.env.DATABASE_URL) {
+    throw new Error('Falta PLATFORM_DATABASE_URL para resolver el tenant.');
   }
-
-  const pool = new Pool({ connectionString: databaseUrl });
 
   try {
     // Verificar que el tenant existe
-    const tenantResult = await pool.query(
-      'SELECT id, name FROM tenants WHERE slug = $1',
-      [slug]
-    );
-    if (tenantResult.rows.length === 0) {
+    const tenant = await platformData.tenantResolver.resolveTenantBySlug(slug);
+    if (!tenant) {
       console.error(`❌ No existe ningún tenant con slug "${slug}"`);
       process.exit(1);
     }
-    const { id: tenantId, name: tenantName } = tenantResult.rows[0];
+    const { tenantId, name: tenantName } = tenant;
     console.log(`\n🏪 Tenant: ${tenantName} (${slug})`);
 
     // Parsear CSV
@@ -197,6 +192,7 @@ async function main() {
     }
 
     // Ejecutar en una transacción
+    const pool = await platformData.tenantDb.getPoolForTenant(tenant);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -243,7 +239,8 @@ async function main() {
     }
 
   } finally {
-    await pool.end();
+    await platformData.connectionManager.closeTenantPools();
+    await platformData.db.closePool();
   }
 }
 

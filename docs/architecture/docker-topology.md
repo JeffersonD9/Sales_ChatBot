@@ -2,7 +2,7 @@
 
 La fase actual corre el runtime por boundaries separados. El modo monolitico ya no forma parte de Docker ni de los scripts npm operativos.
 
-Este repo despliega el bot, el proxy y Redis como infraestructura interna para colas/cache. PostgreSQL/MySQL y backups siguen siendo infraestructura externa.
+Este repo despliega el bot, el proxy, Redis y PostgreSQL como infraestructura interna. Redis y PostgreSQL viven solo en la red Docker `internal`, sin puertos publicos, parecido a una VPC privada dentro del VPS.
 
 El contrato de comunicacion entre servicios esta documentado en `docs/architecture/service-communication.md`.
 
@@ -21,10 +21,10 @@ Servicios default:
 - `whatsapp`: webhooks de Meta en `localhost:3001`.
 - `worker`: jobs, schedules y consumer de `whatsapp.inbound`.
 
-Dependencias externas:
+Dependencias internas:
 
-- `DATABASE_URL` o `PLATFORM_DATABASE_URL`.
-- URLs de bases tenant compartidas/dedicadas segun allocations.
+- `postgres`: platform DB y tenant DB default.
+- `redis`: colas/cache/rate limit.
 
 Redis se levanta en el stack y las apps usan `REDIS_URL=redis://redis:6379` por defecto. Si defines `REDIS_PASSWORD`, el servicio Redis y los clientes lo usan.
 
@@ -46,6 +46,7 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up
 
 Servicios default:
 
+- `postgres`: PostgreSQL interno, sin puerto publico, con DBs `platform` y `tenant_shared_low`.
 - `redis`: Redis interno para BullMQ/cache, sin puerto publico.
 - `api`: `node apps/api-core/server.js` (boundary ESM).
 - `whatsapp`: `node apps/wa-session-manager/server.js` (boundary ESM).
@@ -53,7 +54,7 @@ Servicios default:
 - `nginx`: proxy publico construido desde `infra/nginx/Dockerfile`.
 - `certbot`: renovacion TLS.
 
-No se levantan bases de datos desde este compose. Produccion usa el Redis interno del stack salvo que `REDIS_URL` apunte explicitamente a un Redis administrado.
+Produccion levanta PostgreSQL y Redis dentro del stack. Las apps dependen de sus healthchecks antes de iniciar. Si mas adelante se usa una DB administrada, conviene crear un overlay Compose separado para reemplazar `PLATFORM_DATABASE_URL` y `TENANT_DATABASE_URL_DEFAULT`.
 
 Nginx enruta:
 
@@ -95,6 +96,7 @@ Produccion define limites por contenedor para evitar que una carga puntual afect
 
 | Servicio | CPU | Memoria | Node heap |
 | --- | ---: | ---: | ---: |
+| `postgres` | 1.00 | 1536 MB | n/a |
 | `redis` | 0.50 | 640 MB | n/a |
 | `api` | 0.50 | 384 MB | 256 MB |
 | `whatsapp` | 0.50 | 384 MB | 256 MB |
@@ -125,10 +127,14 @@ La raiz del repo usa `"type": "module"`. `src/` esta deprecado y no participa en
 El flujo de backup no vive en este repo. Debe estar en infraestructura:
 
 ```text
-PostgreSQL/MySQL dump
-  -> /backups/daily/*.sql.gz
-  -> cron/script externo
+PostgreSQL dump
+  -> /var/whatsapp-saas/backups/daily/*.sql.gz
+  -> scripts/backup-postgres.sh desde cron del VPS
   -> Google Drive via rclone
 ```
 
-Este runtime no ejecuta dumps, migraciones ni tareas administrativas sobre bases externas.
+El runtime no ejecuta dumps ni migraciones automaticas. En el VPS se debe configurar un cron de backup para el contenedor `postgres` antes de abrir produccion:
+
+```bash
+0 3 * * * cd /opt/whatsapp-saas && BACKUP_DIR=/var/whatsapp-saas/backups/daily sh scripts/backup-postgres.sh >> /var/log/whatsapp-saas-backup.log 2>&1
+```

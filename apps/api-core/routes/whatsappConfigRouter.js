@@ -14,7 +14,7 @@ router.use(tenantRateLimit);
 
 router.get('/config', async (req, res) => {
   try {
-    const config = await configRepo.getConfig(req.tenantId);
+    const config = await configRepo.getConfigForTenant(req.tenantContext);
     if (!config) return res.status(404).json({ ok: false, error: 'Config no encontrada' });
     const { tenant_id, bot_config, is_active, created_at, updated_at } = config;
     return res.json({ ok: true, data: { tenant_id, bot_config, is_active, created_at, updated_at } });
@@ -30,7 +30,7 @@ router.put('/config', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Incluye al menos un campo a actualizar' });
   }
   try {
-    const updated = await configRepo.saveConfig(req.tenantId, {
+    const updated = await configRepo.saveConfigForTenant(req.tenantContext, {
       session_data, bot_config, webhook_secret, is_active,
     });
     return res.json({
@@ -54,7 +54,7 @@ router.put('/config', async (req, res) => {
 
 router.delete('/config', async (req, res) => {
   try {
-    const deleted = await configRepo.deleteConfig(req.tenantId);
+    const deleted = await configRepo.deleteConfigForTenant(req.tenantContext);
     if (!deleted) return res.status(404).json({ ok: false, error: 'Config no encontrada' });
     return res.json({ ok: true, data: { deleted: true } });
   } catch (err) {

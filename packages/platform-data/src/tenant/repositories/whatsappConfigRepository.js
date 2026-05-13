@@ -221,5 +221,32 @@ async function saveConfigForTenant(tenantContext, { session_data, bot_config, we
   }
 }
 
+async function deleteConfigForTenant(tenantContext) {
+  const db = await getDbForTenant(tenantContext);
+  const tenantId = tenantContext.tenantId;
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL app.current_tenant_id = ${tenantId}`);
+      return tx.delete(tenantWhatsappConfig)
+        .where(eq(tenantWhatsappConfig.tenant_id, tenantId));
+    });
+    await bustCache(tenantId);
+    const deleted = result.rowCount > 0;
+    logger.info({ tenantId, deleted }, '[ConfigRepo] Config eliminada en tenant DB');
+    return deleted;
+  } catch (err) {
+    logger.error({ tenantId, err: err.message }, '[ConfigRepo] Error eliminando en tenant DB');
+    throw err;
+  }
+}
+
 // Legacy: acepta solo tenantId, usa platform DB. Conservar mientras haya callers sin tenantContext.
-module.exports = { getConfig, saveConfig, deleteConfig, getConfigForTenant, saveConfigForTenant };
+module.exports = {
+  getConfig,
+  saveConfig,
+  deleteConfig,
+  getConfigForTenant,
+  saveConfigForTenant,
+  deleteConfigForTenant,
+};

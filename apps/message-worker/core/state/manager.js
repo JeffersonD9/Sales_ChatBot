@@ -31,8 +31,12 @@ let dbOverride = null;
  */
 const pending = new Map();
 
-const isDemo = () => !dbOverride && process.env.DEMO_MODE === 'true'
-  || (process.env.NODE_ENV === 'test' && process.env.DEMO_MODE !== 'false');
+const isDemo = (tenantContext = null) => {
+  if (dbOverride) return false;
+  if (process.env.DEMO_MODE === 'true') return true;
+  if (tenantContext?.tenantId || tenantContext?.dbAllocation) return false;
+  return process.env.NODE_ENV === 'test' && process.env.DEMO_MODE !== 'false';
+};
 
 function _key(tenantSlug, waFrom) {
   return `${tenantSlug}:${waFrom}`;
@@ -49,12 +53,16 @@ function _tenantContext(input) {
   };
 }
 
-async function _dbForTenantContext(tenantContext) {
+function _dbForTenantContext(tenantContext) {
   if (dbOverride) return dbOverride;
   if (tenantContext.dbAllocation) {
     return platformData.tenantDb.getDbForTenant(tenantContext);
   }
   return platformData.drizzle.getDb();
+}
+
+function _resolveDbForTenantContext(tenantContext) {
+  return _dbForTenantContext(tenantContext);
 }
 
 function _defaultSession(tenantContext, waFrom) {
@@ -83,10 +91,11 @@ async function getState(tenantContext, waFrom) {
   if (sessions.has(key)) return sessions.get(key);
   if (pending.has(key))  return pending.get(key);
 
-  if (!isDemo()) {
+  if (!isDemo(tenant)) {
     const promise = (async () => {
       try {
-        const db = await _dbForTenantContext(tenant);
+        const dbResult = _resolveDbForTenantContext(tenant);
+        const db = dbOverride ? dbResult : await dbResult;
         const baseSelect = db
           .select({
             step:              sessionsTable.step,
@@ -153,10 +162,11 @@ async function saveState(tenantContext, waFrom, session) {
   const key = _key(tenant.slug, waFrom);
   sessions.set(key, session);
 
-  if (isDemo()) return;
+  if (isDemo(tenant)) return;
 
   try {
-    const db = await _dbForTenantContext(tenant);
+    const dbResult = _resolveDbForTenantContext(tenant);
+    const db = dbOverride ? dbResult : await dbResult;
     const tenantIdSql = tenant.tenantId
       ? sql`${tenant.tenantId}::uuid`
       : sql`(SELECT id FROM tenants WHERE slug = ${tenant.slug})`;
@@ -190,10 +200,11 @@ async function clearState(tenantContext, waFrom) {
   const key = _key(tenant.slug, waFrom);
   sessions.delete(key);
 
-  if (isDemo()) return;
+  if (isDemo(tenant)) return;
 
   try {
-    const db = await _dbForTenantContext(tenant);
+    const dbResult = _resolveDbForTenantContext(tenant);
+    const db = dbOverride ? dbResult : await dbResult;
     const tenantPredicate = tenant.tenantId
       ? sql`tenant_id = ${tenant.tenantId}::uuid`
       : sql`tenant_id = (SELECT id FROM tenants WHERE slug = ${tenant.slug})`;

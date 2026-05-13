@@ -2,7 +2,7 @@
 
 WhatsApp Sales Agent SaaS multi-tenant. El objetivo del proyecto es mantener un MVP operable mientras se evoluciona hacia una plataforma con tenants en bases compartidas o dedicadas, workers separados y cargas AI opcionales.
 
-La aplicacion no ejecuta migraciones. El schema de base de datos se administra fuera del runtime. Este repo usa variables de entorno para conectarse y solo realiza operaciones normales de producto: consultas, inserts, updates y deletes. Docker en este repo levanta servicios del bot/proxy y Redis para colas/cache; PostgreSQL/MySQL y backups son infraestructura externa.
+La aplicacion no ejecuta migraciones en runtime. El schema se inicializa o actualiza con SQL explicito desde `infra/postgres`. Docker en produccion levanta el bot, proxy, Redis y PostgreSQL dentro de una red interna; las apps solo realizan operaciones normales de producto: consultas, inserts, updates y deletes.
 
 ---
 
@@ -104,9 +104,14 @@ NODE_ENV=development
 PORT=3000
 LOG_LEVEL=info
 
-DATABASE_URL=postgresql://app:password@postgres:5432/whatsapp_saas
-PLATFORM_DATABASE_URL=postgresql://app:password@platform-postgres:5432/platform
-TENANT_DATABASE_URL_DEFAULT=postgresql://app:password@tenant-postgres-low:5432/tenant_shared_low
+POSTGRES_USER=app
+POSTGRES_DB=postgres
+PLATFORM_DB_NAME=platform
+TENANT_DB_NAME_DEFAULT=tenant_shared_low
+DB_PASSWORD=password
+DATABASE_URL=postgresql://app:password@postgres:5432/platform
+PLATFORM_DATABASE_URL=postgresql://app:password@postgres:5432/platform
+TENANT_DATABASE_URL_DEFAULT=postgresql://app:password@postgres:5432/tenant_shared_low
 TENANT_DB_POOL_MAX=10
 TENANT_DB_POOL_CACHE_MAX=20
 
@@ -128,7 +133,7 @@ QUEUE_MODE=direct
 AI_QUEUE_MODE=direct
 ```
 
-Durante la transicion `DATABASE_URL` puede seguir siendo el fallback, pero el codigo nuevo debe preferir `PLATFORM_DATABASE_URL` y `TENANT_DATABASE_URL_DEFAULT`.
+Durante la transicion `DATABASE_URL` puede seguir siendo el fallback, pero produccion debe definir `PLATFORM_DATABASE_URL` y `TENANT_DATABASE_URL_DEFAULT`.
 `REDIS_PASSWORD` es opcional si la credencial ya esta incluida en `REDIS_URL`. Para Redis administrado con TLS usa `rediss://...` o `REDIS_TLS=true`.
 
 ---
@@ -161,7 +166,7 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up
 La topologia Docker default corre servicios separados: `redis`, `api`, `whatsapp` y `worker`. El `ai-worker` se levanta con `--profile ai`. Ver `docs/architecture/docker-topology.md`.
 El flujo de comunicacion entre servicios esta en `docs/architecture/service-communication.md`.
 
-El compose incluye Redis interno como servicio `redis`. Configura `DATABASE_URL`, `PLATFORM_DATABASE_URL` y URLs tenant apuntando a infraestructura externa. `REDIS_URL` queda por defecto como `redis://redis:6379`, salvo que quieras usar Redis administrado.
+El compose de produccion incluye PostgreSQL interno como `postgres` y Redis interno como `redis`, ambos sin puertos publicos. `PLATFORM_DATABASE_URL` y `TENANT_DATABASE_URL_DEFAULT` deben apuntar a `postgres` salvo que decidas mover la DB a infraestructura administrada mas adelante.
 
 No correr migraciones desde esta app.
 

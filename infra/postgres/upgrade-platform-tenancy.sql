@@ -182,3 +182,8 @@ END
 ON CONFLICT (tenant_id) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_tenant_usage_daily_date ON tenant_usage_daily (usage_date);
+
+-- Tenant-domain tables now live in tenant databases. Existing installations that
+-- still have products/sessions/orders in the platform database should migrate
+-- those rows to the tenant DB selected by tenant_db_allocations before dropping
+-- the legacy tables.
