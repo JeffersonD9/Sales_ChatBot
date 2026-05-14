@@ -228,6 +228,43 @@ describe('POST /webhook/:slug', () => {
     expect(res.status).toBe(200);
     process.env.META_APP_SECRET = APP_SECRET;
   });
+
+  test('accepts 360dialog webhook without Meta HMAC when provider is 360dialog', async () => {
+    mockTenantLoader.get.mockResolvedValueOnce({
+      slug: 'test-tenant',
+      verify_token: 'my-verify-token',
+      wa_token: 'd360-token',
+      bot_config: { whatsapp_provider: '360dialog' },
+      products: [],
+    });
+
+    const res = await supertest(app)
+      .post('/webhook/test-tenant')
+      .set('Content-Type', 'application/json')
+      .send(metaPayload());
+
+    expect(res.status).toBe(200);
+  });
+
+  test('rejects 360dialog webhook when configured Authorization header does not match', async () => {
+    process.env.D360_WEBHOOK_AUTHORIZATION = 'Basic expected';
+    mockTenantLoader.get.mockResolvedValueOnce({
+      slug: 'test-tenant',
+      verify_token: 'my-verify-token',
+      wa_token: 'd360-token',
+      bot_config: { whatsapp_provider: '360dialog' },
+      products: [],
+    });
+
+    const res = await supertest(app)
+      .post('/webhook/test-tenant')
+      .set('Authorization', 'Basic wrong')
+      .set('Content-Type', 'application/json')
+      .send(metaPayload());
+
+    expect(res.status).toBe(401);
+    delete process.env.D360_WEBHOOK_AUTHORIZATION;
+  });
 });
 
 // ── GET /health ───────────────────────────────────────────────────────────────

@@ -10,6 +10,10 @@ const MAX_HISTORY     = 6;
 // Máximo de caracteres por mensaje al almacenar en historial
 const MAX_MSG_CHARS   = 500;
 
+function _elapsedMs(startedAt) {
+  return Number(process.hrtime.bigint() - startedAt) / 1e6;
+}
+
 function _buildSystemContent(tenant) {
   const text = buildSalesPrompt(tenant);
   return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
@@ -59,6 +63,7 @@ async function handleWithAILocally(phone, text, session, tenant) {
   ];
 
   try {
+    const startedAt = process.hrtime.bigint();
     const response = await client.messages.create({
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 300,
@@ -74,7 +79,15 @@ async function handleWithAILocally(phone, text, session, tenant) {
     const cacheHit     = (response.usage?.cache_read_input_tokens || 0) > 0;
 
     logger.info(
-      { phone, tenantSlug: tenant.slug, inputTokens, outputTokens, cacheHit },
+      {
+        metric: 'ai.provider.completed',
+        phone,
+        tenantSlug: tenant.slug,
+        inputTokens,
+        outputTokens,
+        cacheHit,
+        durationMs: Math.round(_elapsedMs(startedAt)),
+      },
       '[AI] Respuesta generada'
     );
 

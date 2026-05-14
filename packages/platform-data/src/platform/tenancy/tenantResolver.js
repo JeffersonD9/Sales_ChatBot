@@ -119,6 +119,14 @@ function _limits(row) {
   };
 }
 
+function _whatsappProvider(row) {
+  const config = row.bot_config || {};
+  const rawProvider = config.whatsapp_provider || config.whatsapp?.provider || 'meta';
+  const provider = String(rawProvider).trim().toLowerCase();
+  if (['360dialog', '360_dialog', 'd360', 'dialog360'].includes(provider)) return '360dialog';
+  return 'meta';
+}
+
 async function _resolveTenant(whereClause, logContext = {}) {
   const db = getPlatformDb();
 
@@ -184,6 +192,8 @@ async function _resolveTenant(whereClause, logContext = {}) {
     limits: _limits(row),
     whatsapp: {
       token: waToken,
+      apiKey: waToken,
+      provider: _whatsappProvider(row),
       phoneNumberId: row.phone_number_id,
       verifyToken: row.verify_token,
       metaLive: row.meta_live,

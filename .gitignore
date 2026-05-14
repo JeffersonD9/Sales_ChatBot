@@ -43,11 +43,15 @@ tests/
 !tests/
 tests/*
 !tests/package.json
+!tests/unit/
+!tests/unit/integrations/
+!tests/unit/integrations/whatsappSender.test.js
 
 # Docs internos
 docs/
 !docs/
 docs/*
+!docs/integracion-360dialog.md
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/folder-structure.md

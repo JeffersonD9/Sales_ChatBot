@@ -15,6 +15,28 @@ const webhookVerifyRateLimit = ipRateLimit({
   windowSec: 60,
 });
 
+function normalizeProvider(value) {
+  const provider = String(value || '').trim().toLowerCase();
+  if (['360dialog', '360_dialog', 'd360', 'dialog360'].includes(provider)) return '360dialog';
+  return 'meta';
+}
+
+function tenantProvider(tenant) {
+  return normalizeProvider(
+    tenant?.whatsapp?.provider ||
+    tenant?.bot_config?.whatsapp_provider ||
+    tenant?.botConfig?.whatsapp_provider ||
+    process.env.WHATSAPP_PROVIDER ||
+    'meta'
+  );
+}
+
+function verify360DialogWebhook(req) {
+  const expectedAuthorization = process.env.D360_WEBHOOK_AUTHORIZATION;
+  if (!expectedAuthorization) return true;
+  return req.get('authorization') === expectedAuthorization;
+}
+
 router.get('/:slug', validateSlug, webhookVerifyRateLimit, async (req, res) => {
   const { slug } = req.params;
   const mode = req.query['hub.mode'];
@@ -38,12 +60,24 @@ router.get('/:slug', validateSlug, webhookVerifyRateLimit, async (req, res) => {
   return res.sendStatus(403);
 });
 
-router.post('/:slug', validateSlug, (req, res) => {
+router.post('/:slug', validateSlug, async (req, res) => {
   const { slug } = req.params;
+  const tenant = await tenantLoader.get(slug);
+  const provider = tenantProvider(tenant);
+
+  if (!tenant) {
+    logger.warn({ tenantSlug: slug }, '[Webhook] POST rechazado - tenant no encontrado');
+    return res.sendStatus(404);
+  }
+
+  if (provider === '360dialog' && !verify360DialogWebhook(req)) {
+    logger.warn({ tenantSlug: slug, provider }, '[Webhook] Header 360dialog invalido - request rechazado');
+    return res.sendStatus(401);
+  }
 
   const appSecret = process.env.META_APP_SECRET;
-  if (appSecret && !verifyMetaSignature(req, appSecret)) {
-    logger.warn({ tenantSlug: slug }, '[Webhook] Firma HMAC invalida - request rechazado');
+  if (provider === 'meta' && appSecret && !verifyMetaSignature(req, appSecret)) {
+    logger.warn({ tenantSlug: slug, provider }, '[Webhook] Firma HMAC invalida - request rechazado');
     return res.sendStatus(401);
   }
 

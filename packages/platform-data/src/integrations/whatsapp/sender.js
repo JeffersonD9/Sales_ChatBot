@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * WhatsApp Cloud API client (Meta).
+ * WhatsApp outbound client.
  *
  * All functions accept `tenant` as the last argument so the same process
  * can serve multiple accounts without reading from process.env.
@@ -12,7 +12,8 @@
 const axios      = require('axios');
 const { logger } = require('@whatsapp-saas/logger');
 
-const BASE_URL = 'https://graph.facebook.com/v20.0';
+const META_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
+const D360_BASE_URL = process.env.D360_BASE_URL || 'https://waba-v2.360dialog.io';
 
 function isDemoMode(tenant) {
   return (
@@ -28,38 +29,95 @@ function collectDemo(simplified) {
   }
 }
 
-async function _callMeta(phone, payload, tenant) {
-  const url  = `${BASE_URL}/${tenant.phone_number_id}/messages`;
+function normalizeProvider(value) {
+  const provider = String(value || '').trim().toLowerCase();
+  if (['360dialog', '360_dialog', 'd360', 'dialog360'].includes(provider)) return '360dialog';
+  return 'meta';
+}
+
+function getProvider(tenant) {
+  return normalizeProvider(
+    tenant?.whatsapp?.provider ||
+    tenant?.bot_config?.whatsapp_provider ||
+    tenant?.botConfig?.whatsapp_provider ||
+    tenant?.bot_config?.whatsapp?.provider ||
+    tenant?.botConfig?.whatsapp?.provider ||
+    process.env.WHATSAPP_PROVIDER ||
+    'meta'
+  );
+}
+
+function tokenForProvider(tenant, provider) {
+  return (
+    tenant?.whatsapp?.apiKey ||
+    tenant?.whatsapp?.token ||
+    tenant?.wa_token ||
+    tenant?.bot_config?.d360_api_key ||
+    tenant?.botConfig?.d360_api_key ||
+    (provider === '360dialog' ? process.env.D360_API_KEY : process.env.META_ACCESS_TOKEN)
+  );
+}
+
+function requestForProvider(phone, payload, tenant) {
+  const provider = getProvider(tenant);
+  const token = tokenForProvider(tenant, provider);
   const body = { messaging_product: 'whatsapp', to: phone, ...payload };
 
-  try {
-    const res = await axios.post(url, body, {
+  if (provider === '360dialog') {
+    return {
+      provider,
+      token,
+      url: `${D360_BASE_URL}/messages`,
+      body,
       headers: {
-        Authorization:  `Bearer ${tenant.wa_token}`,
+        'D360-API-KEY': token,
         'Content-Type': 'application/json',
       },
-    });
+    };
+  }
+
+  return {
+    provider,
+    token,
+    url: `${META_BASE_URL}/${tenant.phone_number_id}/messages`,
+    body,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  };
+}
+
+async function _callWhatsApp(phone, payload, tenant) {
+  const request = requestForProvider(phone, payload, tenant);
+
+  if (!request.token) {
+    throw new Error(`Falta token/API key para proveedor WhatsApp ${request.provider}`);
+  }
+
+  try {
+    const res = await axios.post(request.url, request.body, { headers: request.headers });
     return res.data;
   } catch (err) {
     const detail = err.response?.data || err.message;
-    logger.error({ tenantSlug: tenant.slug, phone, detail }, '[Sender] Error Meta API');
+    logger.error({ tenantSlug: tenant.slug, phone, provider: request.provider, detail }, '[Sender] Error WhatsApp API');
     throw err;
   }
 }
 
 async function sendText(phone, text, tenant) {
   if (isDemoMode(tenant)) { collectDemo({ type: 'text', content: text }); return; }
-  return _callMeta(phone, { type: 'text', text: { body: text, preview_url: false } }, tenant);
+  return _callWhatsApp(phone, { type: 'text', text: { body: text, preview_url: false } }, tenant);
 }
 
 async function sendImage(phone, imageUrl, caption = '', tenant) {
   if (isDemoMode(tenant)) { collectDemo({ type: 'image', url: imageUrl, caption }); return; }
-  return _callMeta(phone, { type: 'image', image: { link: imageUrl, caption } }, tenant);
+  return _callWhatsApp(phone, { type: 'image', image: { link: imageUrl, caption } }, tenant);
 }
 
 async function sendInteractiveButtons(phone, bodyText, buttons, tenant) {
   if (isDemoMode(tenant)) { collectDemo({ type: 'buttons', text: bodyText, buttons }); return; }
-  return _callMeta(phone, {
+  return _callWhatsApp(phone, {
     type: 'interactive',
     interactive: {
       type: 'button',
@@ -76,7 +134,7 @@ async function sendInteractiveList(phone, bodyText, buttonText, sections, tenant
     collectDemo({ type: 'list', text: bodyText, buttonText, sections });
     return;
   }
-  return _callMeta(phone, {
+  return _callWhatsApp(phone, {
     type: 'interactive',
     interactive: {
       type: 'list',
@@ -88,7 +146,15 @@ async function sendInteractiveList(phone, bodyText, buttonText, sections, tenant
 
 async function sendAudio(phone, audioUrl, tenant) {
   if (isDemoMode(tenant)) { collectDemo({ type: 'audio', url: audioUrl }); return; }
-  return _callMeta(phone, { type: 'audio', audio: { link: audioUrl } }, tenant);
+  return _callWhatsApp(phone, { type: 'audio', audio: { link: audioUrl } }, tenant);
 }
 
-module.exports = { sendText, sendImage, sendInteractiveButtons, sendInteractiveList, sendAudio };
+module.exports = {
+  sendText,
+  sendImage,
+  sendInteractiveButtons,
+  sendInteractiveList,
+  sendAudio,
+  getProvider,
+  requestForProvider,
+};

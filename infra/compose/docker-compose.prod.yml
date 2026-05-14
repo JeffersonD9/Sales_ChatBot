@@ -177,6 +177,7 @@ services:
     environment:
       NODE_ENV: production
       QUEUE_MODE: bullmq
+      QUEUE_CONCURRENCY: "10"
       PLATFORM_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD}@postgres:5432/${PLATFORM_DB_NAME:-platform}
       TENANT_DATABASE_URL_DEFAULT: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
@@ -215,6 +216,7 @@ services:
     environment:
       NODE_ENV: production
       AI_QUEUE_MODE: bullmq
+      AI_QUEUE_CONCURRENCY: "2"
       PLATFORM_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD}@postgres:5432/${PLATFORM_DB_NAME:-platform}
       TENANT_DATABASE_URL_DEFAULT: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}

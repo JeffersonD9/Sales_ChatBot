@@ -17,20 +17,35 @@ const tenantLoader = platformData.tenantLoader;
 const { getState, saveState } = stateManager;
 const { logger } = loggerModule;
 
-// Idempotencia: evita procesar el mismo mensaje dos veces
-// LRU con TTL de 24h — sobrevive reinicios de cola pero no de proceso
+// Idempotencia: evita procesar el mismo mensaje dos veces.
 const processedIds = new LRUCache({
   max: 10_000,
   ttl: 24 * 60 * 60 * 1000,
 });
 
+function elapsedMs(startedAt) {
+  return Number(process.hrtime.bigint() - startedAt) / 1e6;
+}
+
+function msSince(isoDate) {
+  const parsed = Date.parse(isoDate);
+  return Number.isNaN(parsed) ? null : Date.now() - parsed;
+}
+
 async function dispatch(tenantSlug, webhookBody) {
-  if (webhookBody.object !== 'whatsapp_business_account') return;
+  const summary = {
+    messagesTotal: 0,
+    messagesProcessed: 0,
+    messagesDuplicated: 0,
+    messagesFailed: 0,
+  };
+
+  if (webhookBody.object !== 'whatsapp_business_account') return summary;
 
   const tenant = await tenantLoader.get(tenantSlug);
   if (!tenant) {
-    logger.warn({ tenantSlug }, '[Processor] Tenant no encontrado — mensaje ignorado');
-    return;
+    logger.warn({ tenantSlug }, '[Processor] Tenant no encontrado - mensaje ignorado');
+    return summary;
   }
 
   for (const entry of webhookBody.entry || []) {
@@ -38,22 +53,36 @@ async function dispatch(tenantSlug, webhookBody) {
       if (change.field !== 'messages') continue;
 
       for (const message of change.value?.messages || []) {
+        const startedAt = process.hrtime.bigint();
         const waFrom = message.from;
         const msgId  = message.id;
+        summary.messagesTotal += 1;
 
         if (msgId && processedIds.has(msgId)) {
-          logger.debug({ tenantSlug, waFrom, msgId }, '[Processor] Mensaje duplicado ignorado');
+          summary.messagesDuplicated += 1;
+          logger.info({
+            metric: 'worker.message.duplicated',
+            tenantSlug,
+            waFrom,
+            msgId,
+            type: message.type,
+          }, '[Processor] Mensaje duplicado ignorado');
           continue;
         }
         if (msgId) processedIds.set(msgId, 1);
 
-        logger.info({ tenantSlug, waFrom, type: message.type }, '[Processor] Mensaje recibido');
+        logger.info({
+          metric: 'worker.message.received',
+          tenantSlug,
+          waFrom,
+          msgId,
+          type: message.type,
+        }, '[Processor] Mensaje recibido');
 
         try {
           const session  = await getState(tenant, waFrom);
           const flowType = tenant.bot_config?.flow_type ?? tenant.botConfig?.flow_type;
           const { engine, aiCapabilities } = getFlow(flowType);
-          // Shim: flujos legacy usan bot_config/wa_token/phone_number_id (snake_case)
           const tenantForFlows = {
             ...tenant,
             bot_config:      tenant.bot_config      ?? tenant.botConfig,
@@ -63,20 +92,59 @@ async function dispatch(tenantSlug, webhookBody) {
           const services = buildServices(tenantForFlows, aiCapabilities);
           await engine.processMessage(waFrom, message, session, tenantForFlows, notifier, services);
           await saveState(tenant, waFrom, session);
+          summary.messagesProcessed += 1;
+          logger.info({
+            metric: 'worker.message.processed',
+            tenantSlug,
+            waFrom,
+            msgId,
+            type: message.type,
+            flowType: flowType || 'default',
+            durationMs: Math.round(elapsedMs(startedAt)),
+          }, '[Processor] Mensaje procesado');
         } catch (err) {
-          logger.error({ tenantSlug, waFrom, err: err.message }, '[Processor] Error procesando mensaje');
+          summary.messagesFailed += 1;
+          logger.error({
+            metric: 'worker.message.failed',
+            tenantSlug,
+            waFrom,
+            msgId,
+            type: message.type,
+            durationMs: Math.round(elapsedMs(startedAt)),
+            err: err.message,
+          }, '[Processor] Error procesando mensaje');
         }
       }
     }
   }
+
+  return summary;
 }
 
 export async function processWhatsAppInbound(job) {
+  const startedAt = process.hrtime.bigint();
   const { tenantSlug, webhookBody } = job.data || {};
   if (!tenantSlug || !webhookBody) {
     throw new Error('Job whatsapp.inbound invalido');
   }
-  await dispatch(tenantSlug, webhookBody);
+
+  logger.info({
+    metric: 'worker.inbound.job.started',
+    tenantSlug,
+    jobId: job.id,
+    queueWaitMs: msSince(job.data.receivedAt),
+  }, '[Processor] Job inbound iniciado');
+
+  const summary = await dispatch(tenantSlug, webhookBody);
+
+  logger.info({
+    metric: 'worker.inbound.job.completed',
+    tenantSlug,
+    jobId: job.id,
+    queueWaitMs: msSince(job.data.receivedAt),
+    durationMs: Math.round(elapsedMs(startedAt)),
+    ...summary,
+  }, '[Processor] Job inbound completado');
 }
 
 export function registerWhatsAppInboundProcessor() {

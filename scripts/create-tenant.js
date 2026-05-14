@@ -7,8 +7,11 @@
  *     --name="Boutique Ana" \
  *     --wa-token=EAAxxxxx \
  *     --phone-id=123456789 \
+ *     --provider=meta \
  *     --owner-phone=573001234567 \
  *     --plan=basic
+ *
+ * Para 360dialog usa --provider=360dialog y pasa la D360-API-KEY en --wa-token.
  */
 
 import { createRequire } from 'module';
@@ -74,6 +77,7 @@ function parseArgs() {
     plan: normalizePlan(args.plan || process.env.PLAN || 'basic'),
     waToken: args['wa-token'] || process.env.WA_TOKEN,
     phoneId: args['phone-id'] || process.env.PHONE_ID,
+    provider: normalizeProvider(args.provider || process.env.WHATSAPP_PROVIDER || 'meta'),
     verifyToken: args['verify-token'] || process.env.VERIFY_TOKEN,
     ownerPhone: args['owner-phone'] || process.env.OWNER_PHONE,
     ownerEmail: args['owner-email'] || process.env.OWNER_EMAIL || null,
@@ -92,6 +96,12 @@ function normalizePlan(plan) {
   return 'basic';
 }
 
+function normalizeProvider(provider) {
+  const value = String(provider || '').trim().toLowerCase();
+  if (['360dialog', '360_dialog', 'd360', 'dialog360'].includes(value)) return '360dialog';
+  return 'meta';
+}
+
 function defaultDatabaseName(slug, plan) {
   if (plan !== 'enterprise') return null;
   return `tenant_${String(slug).replace(/[^a-zA-Z0-9_]/g, '_')}`;
@@ -102,8 +112,12 @@ function generateVerifyToken(slug) {
 }
 
 function validate(params) {
-  const missing = ['slug', 'name', 'waToken', 'phoneId', 'ownerPhone']
+  const missing = ['slug', 'name', 'waToken', 'ownerPhone']
     .filter((key) => !params[key]);
+
+  if (params.provider === 'meta' && !params.phoneId) {
+    missing.push('phoneId');
+  }
 
   if (missing.length > 0) {
     throw new Error(`Faltan parametros: ${missing.join(', ')}`);
@@ -260,6 +274,7 @@ async function main() {
       schedule: params.schedule,
       offers: [],
       flow_type: params.flowType,
+      whatsapp_provider: params.provider,
     };
 
     const tenantResult = await client.query(
@@ -299,6 +314,7 @@ async function main() {
     console.log(`   Slug:        ${tenant.slug}`);
     console.log(`   Nombre:      ${tenant.name}`);
     console.log(`   Plan:        ${tenant.plan}`);
+    console.log(`   WhatsApp:    ${params.provider}`);
     console.log(`   IA activa:   ${provisioning.aiEnabled ? 'si' : 'no'}`);
     console.log(`   Cluster:     ${provisioning.clusterCode}`);
     console.log(`   Allocation:  ${provisioning.allocationStrategy}`);

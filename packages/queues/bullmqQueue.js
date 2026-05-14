@@ -88,21 +88,37 @@ export async function enqueue(queueName, payload, options = {}) {
 export function registerProcessor(queueName, processor, options = {}) {
   if (workers.has(queueName)) return workers.get(queueName);
 
+  const concurrency = parseInt(options.concurrency || process.env.QUEUE_CONCURRENCY || '5', 10);
   const worker = new Worker(queueName, processor, {
     connection: createConnection(),
-    concurrency: parseInt(options.concurrency || process.env.QUEUE_CONCURRENCY || '5', 10),
+    concurrency,
   });
 
   worker.on('completed', (job) => {
-    logger.info({ queue: queueName, jobId: job.id }, '[BullMQ] Job completado');
+    logger.info({
+      metric: 'queue.job.completed',
+      queue: queueName,
+      jobId: job.id,
+      attemptsMade: job.attemptsMade,
+      queueWaitMs: job.processedOn && job.timestamp ? job.processedOn - job.timestamp : null,
+      durationMs: job.finishedOn && job.processedOn ? job.finishedOn - job.processedOn : null,
+    }, '[BullMQ] Job completado');
   });
 
   worker.on('failed', (job, err) => {
-    logger.error({ queue: queueName, jobId: job?.id, err: err.message }, '[BullMQ] Job fallo');
+    logger.error({
+      metric: 'queue.job.failed',
+      queue: queueName,
+      jobId: job?.id,
+      attemptsMade: job?.attemptsMade,
+      queueWaitMs: job?.processedOn && job?.timestamp ? job.processedOn - job.timestamp : null,
+      durationMs: job?.finishedOn && job?.processedOn ? job.finishedOn - job.processedOn : null,
+      err: err.message,
+    }, '[BullMQ] Job fallo');
   });
 
   workers.set(queueName, worker);
-  logger.info({ queue: queueName }, '[BullMQ] Processor registrado');
+  logger.info({ queue: queueName, concurrency }, '[BullMQ] Processor registrado');
   return worker;
 }
 
