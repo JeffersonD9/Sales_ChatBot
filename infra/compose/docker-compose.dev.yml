@@ -153,6 +153,7 @@ services:
     networks:
       - internal
 
+  # Panel admin dev — levantar con: --profile dashboard
   dashboard:
     build:
       context: ./apps/dashboard
@@ -173,6 +174,8 @@ services:
       SESSION_TTL_SECONDS: "28800"
       PANEL_DOMAIN: localhost
       BOT_DOMAIN: localhost
+    profiles:
+      - dashboard
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health >/dev/null 2>&1 || exit 1"]
       interval: 30s

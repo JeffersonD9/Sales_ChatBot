@@ -255,7 +255,8 @@ services:
     env_file: .env
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
-      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?ADMIN_DOMAIN is required}
+      # ADMIN_DOMAIN solo requerido cuando el perfil `dashboard` está activo
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-}
     ports:
       - "80:80"
       - "443:443"
@@ -268,8 +269,7 @@ services:
         condition: service_healthy
       whatsapp:
         condition: service_healthy
-      dashboard:
-        condition: service_healthy
+      # dashboard no está aquí: nginx usa resolución lazy y arranca sin él
     networks:
       - internal
     healthcheck:
@@ -305,6 +305,13 @@ services:
     networks:
       - internal
 
+  # ── Panel admin (OPCIONAL) ───────────────────────────────────────────────────
+  # Activo por defecto con el perfil `dashboard`.
+  #
+  # Desacople en 3 pasos (ver DEPLOY.md#desacople):
+  #   1. Quitar admin.conf.template del Dockerfile de nginx
+  #   2. Eliminar este bloque del compose
+  #   3. Quitar ADMIN_DOMAIN y DASHBOARD_* del .env
   dashboard:
     build:
       context: ./apps/dashboard
@@ -328,6 +335,8 @@ services:
       ALLOWED_IPS: ${DASHBOARD_ALLOWED_IPS:-}
       PANEL_DOMAIN: ${ADMIN_DOMAIN}
       BOT_DOMAIN: ${DOMAIN}
+    profiles:
+      - dashboard
     depends_on:
       postgres:
         condition: service_healthy

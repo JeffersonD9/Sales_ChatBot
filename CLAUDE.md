@@ -531,17 +531,23 @@ npm run test:integration
 Docker:
 
 ```bash
-# Desarrollo (todos los servicios)
+# Desarrollo — bot solamente
 docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml up
 
-# Desarrollo con AI worker
-docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml --profile ai up
+# Desarrollo — bot + panel admin
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml --profile dashboard up
 
-# Producción
+# Desarrollo — bot + panel admin + AI worker
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml --profile dashboard --profile ai up
+
+# Producción — bot solamente
 docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up -d
 
-# Producción con AI worker
-docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile ai up -d
+# Producción — bot + panel admin  (configuración actual)
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile dashboard up -d
+
+# Producción — bot + panel admin + AI worker
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile dashboard --profile ai up -d
 
 # Bootstrap TLS (primera vez, para obtener certificado Let's Encrypt)
 docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile tls-bootstrap up -d nginx-bootstrap

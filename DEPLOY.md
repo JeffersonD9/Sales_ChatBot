@@ -4,6 +4,9 @@ Stack completo: API Core · WhatsApp Bot · Worker · Dashboard · Redis · Post
 
 **VPS objetivo:** Hostinger KVM2 (4 vCPU / 8 GB RAM) — Ubuntu 22.04
 
+> El panel admin (`dashboard`) es un servicio **opcional** controlado por el perfil `--profile dashboard`.
+> Puede desacoplarse de esta infraestructura en cualquier momento — ver [sección al final](#desacople-del-panel-admin).
+
 ---
 
 ## Requisitos previos
@@ -173,12 +176,16 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
 ```bash
 cd /opt/jestsolution
 
-# Build y levantar todos los servicios
-docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up -d --build
-
-# Con AI worker (opcional):
+# Bot + panel admin (configuración por defecto)
 docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
-  --profile ai up -d --build
+  --profile dashboard up -d --build
+
+# Bot + panel admin + AI worker
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
+  --profile dashboard --profile ai up -d --build
+
+# Solo el bot (sin panel admin)
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up -d --build
 ```
 
 Verificar que todos los servicios están sanos:
@@ -325,3 +332,73 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
 # Verificar que DASHBOARD_AUTH_SECRET está en .env (mínimo 32 chars)
 grep DASHBOARD_AUTH_SECRET .env
 ```
+
+---
+
+## Desacople del panel admin
+
+Cuando necesites mover el panel a su propia infraestructura (otra VPS, otro
+servicio, recursos dedicados), son exactamente 3 cambios:
+
+### Paso 1 — Desconectar nginx del panel
+
+En `infra/nginx/Dockerfile`, reemplazar:
+```dockerfile
+COPY templates /etc/nginx/templates
+```
+por:
+```dockerfile
+COPY templates/bot.conf.template /etc/nginx/templates/
+```
+
+Rebuild nginx: `docker compose ... up -d --build nginx`
+
+### Paso 2 — Quitar el servicio del compose
+
+En `infra/compose/docker-compose.prod.yml`, eliminar el bloque `dashboard:` completo
+(el que tiene `profiles: [dashboard]`).
+
+El bot, redis, postgres y nginx siguen exactamente igual. Sin cambios en ningún otro servicio.
+
+### Paso 3 — Limpiar variables de entorno del bot
+
+En `.env`, eliminar (o ignorar):
+```
+ADMIN_DOMAIN
+DASHBOARD_AUTH_SECRET
+DASHBOARD_SESSION_TTL_SECONDS
+DASHBOARD_ALLOWED_IPS
+```
+
+---
+
+### Deploy independiente del panel
+
+Una vez desacoplado, el código vive en `apps/dashboard/` y tiene todo lo que necesita:
+su propio `Dockerfile`, `pnpm-lock.yaml` y `scripts/`.
+
+```bash
+# En el nuevo servidor / servicio
+git clone https://github.com/JeffersonD9/Sales_ChatBot.git /opt/jestsolution
+cd /opt/jestsolution/apps/dashboard
+
+# Variables de entorno (apuntando a la DB existente por IP/hostname)
+cp .env.example .env
+nano .env
+# DATABASE_URL=postgresql://dashboard_app:PASSWORD@<IP_POSTGRES>:5432/platform
+# TENANT_DATABASE_URL=postgresql://dashboard_ro:PASSWORD@<IP_POSTGRES>:5432/tenant_shared_low
+# AUTH_SECRET=<openssl rand -hex 32>
+
+# Build y levantar (con su propio nginx/caddy aparte)
+docker build -t jestsolution/dashboard:latest .
+docker run -d \
+  --name dashboard \
+  --env-file .env \
+  -p 127.0.0.1:3001:3001 \
+  --restart unless-stopped \
+  jestsolution/dashboard:latest
+```
+
+La BD sigue siendo la misma — solo cambia la red desde donde se accede.
+Los usuarios del panel (`dashboard_app`, `dashboard_ro`) ya tienen permisos
+restringidos, así que no hay riesgo de exponer el bot.

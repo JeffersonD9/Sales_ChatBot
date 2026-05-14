@@ -1,0 +1,63 @@
+# Panel admin — OPCIONAL.
+# Variable requerida: ADMIN_DOMAIN (ej: admin.jestsolution.dev)
+#
+# Para desacoplar el panel de esta infraestructura:
+#   1. Eliminar este archivo del build de la imagen nginx
+#   2. Quitar el servicio `dashboard` del compose
+#   3. Quitar ADMIN_DOMAIN y DASHBOARD_* del .env
+#
+# nginx usa resolución lazy (resolver Docker interno) para que el servicio
+# arranque correctamente incluso si el contenedor dashboard no está corriendo.
+
+# Rate limit para el panel (nivel http, incluido desde nginx.conf http {})
+limit_req_zone $binary_remote_addr zone=admin_panel:1m rate=10r/s;
+
+server {
+  listen 80;
+  server_name ${ADMIN_DOMAIN};
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}
+
+server {
+  listen 443 ssl;
+  http2  on;
+  server_name ${ADMIN_DOMAIN};
+
+  ssl_certificate     /etc/letsencrypt/live/${ADMIN_DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${ADMIN_DOMAIN}/privkey.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+  ssl_ciphers         ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5;
+  ssl_prefer_server_ciphers on;
+  ssl_session_cache   shared:SSL:10m;
+  ssl_session_timeout 1d;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Frame-Options          "DENY"    always;
+  add_header X-Content-Type-Options   "nosniff" always;
+
+  location / {
+    limit_req zone=admin_panel burst=20 nodelay;
+
+    # Resolución lazy: nginx resuelve el upstream en cada request, no al arrancar.
+    # Esto permite que nginx inicie aunque el contenedor dashboard esté parado.
+    resolver 127.0.0.11 valid=10s;
+    set $dashboard_upstream http://dashboard:3001;
+    proxy_pass            $dashboard_upstream;
+
+    proxy_set_header      Host              $host;
+    proxy_set_header      X-Real-IP         $remote_addr;
+    proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header      X-Forwarded-Proto https;
+    proxy_read_timeout    30s;
+    proxy_connect_timeout 5s;
+    proxy_set_header      Upgrade    $http_upgrade;
+    proxy_set_header      Connection "upgrade";
+  }
+}
