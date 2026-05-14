@@ -1,8 +1,13 @@
 # Template procesado por envsubst al iniciar el contenedor.
-# Variable requerida: DOMAIN (ej: api.midominio.com)
-# El resultado se coloca en /etc/nginx/conf.d/default.conf
+# Variables requeridas:
+#   DOMAIN       — dominio del bot (ej: bot.jestsolution.dev)
+#   ADMIN_DOMAIN — dominio del panel admin (ej: admin.jestsolution.dev)
 
-# HTTP: responde ACME challenge y redirige todo lo demás a HTTPS
+# Rate limit zones (nivel http — incluido desde nginx.conf http {})
+limit_req_zone $binary_remote_addr zone=admin_panel:1m rate=10r/s;
+
+# ── HTTP: ACME challenge + redirect HTTPS ─────────────────────────────────────
+
 server {
   listen 80;
   server_name ${DOMAIN};
@@ -21,7 +26,21 @@ server {
   }
 }
 
-# HTTPS principal
+server {
+  listen 80;
+  server_name ${ADMIN_DOMAIN};
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}
+
+# ── HTTPS: Bot (${DOMAIN}) ────────────────────────────────────────────────────
+
 server {
   listen 443 ssl;
   http2  on;
@@ -37,7 +56,7 @@ server {
 
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-  # Webhooks Meta — rutas /webhook/:slug con rate limit propio
+  # Webhooks Meta — rate limit dedicado
   location ~ ^/webhook/[a-z0-9_-]+$ {
     limit_req zone=webhook burst=50 nodelay;
     proxy_pass         http://whatsapp:3001;
@@ -49,21 +68,58 @@ server {
     proxy_connect_timeout 5s;
   }
 
-  # Media: solo accesible via X-Accel-Redirect emitido por el app (requiere JWT)
+  # Media: solo via X-Accel-Redirect (requiere JWT)
   location /media/ {
     internal;
     alias   /var/whatsapp-saas/media/;
     expires 30d;
-    add_header Cache-Control        "public, immutable";
+    add_header Cache-Control          "public, immutable";
     add_header X-Content-Type-Options "nosniff" always;
   }
 
-  # Todo lo demás → API Core
+  # API Core — todo lo demás
   location / {
     proxy_pass       http://api:3000;
     proxy_set_header Host              $host;
     proxy_set_header X-Real-IP         $remote_addr;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto https;
+  }
+}
+
+# ── HTTPS: Panel Admin (${ADMIN_DOMAIN}) ──────────────────────────────────────
+# Certificado independiente — obtener con:
+#   certbot certonly --webroot -w /var/www/certbot -d ${ADMIN_DOMAIN}
+# Tráfico limitado: solo 2 usuarios max, acceso por IP whitelist en la app.
+
+server {
+  listen 443 ssl;
+  http2  on;
+  server_name ${ADMIN_DOMAIN};
+
+  ssl_certificate     /etc/letsencrypt/live/${ADMIN_DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${ADMIN_DOMAIN}/privkey.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+  ssl_ciphers         ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5;
+  ssl_prefer_server_ciphers on;
+  ssl_session_cache   shared:SSL:10m;
+  ssl_session_timeout 1d;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Frame-Options          "DENY"    always;
+  add_header X-Content-Type-Options   "nosniff" always;
+
+  location / {
+    limit_req zone=admin_panel burst=20 nodelay;
+    proxy_pass            http://dashboard:3001;
+    proxy_set_header      Host              $host;
+    proxy_set_header      X-Real-IP         $remote_addr;
+    proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header      X-Forwarded-Proto https;
+    proxy_read_timeout    30s;
+    proxy_connect_timeout 5s;
+    # Next.js necesita este header para standalone mode
+    proxy_set_header      Upgrade    $http_upgrade;
+    proxy_set_header      Connection "upgrade";
   }
 }

@@ -51,6 +51,20 @@ CREATE TABLE IF NOT EXISTS tenant_whatsapp_config (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS messages (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     uuid NOT NULL,
+  wa_from       varchar(32) NOT NULL,
+  direction     varchar(8) NOT NULL,
+  type          varchar(32) NOT NULL DEFAULT 'text',
+  body          text NOT NULL DEFAULT '',
+  wa_message_id varchar(256),
+  metadata      jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_products_tenant_active ON products (tenant_id, active);
 CREATE INDEX IF NOT EXISTS idx_sessions_tenant_activity ON sessions (tenant_id, last_activity);
 CREATE INDEX IF NOT EXISTS idx_orders_tenant_created ON orders (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS messages_tenant_wa_idx ON messages (tenant_id, wa_from);
+CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages (created_at);

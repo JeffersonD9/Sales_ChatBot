@@ -466,10 +466,11 @@ Metricas prioritarias:
 
 ```text
 apps/
-  api-core/
-  wa-session-manager/
-  message-worker/
-  ai-orchestrator/
+  api-core/             Express — auth, billing, admin, whatsapp config
+  wa-session-manager/   Express — webhooks Meta, ingestion, sesiones
+  message-worker/       BullMQ worker — procesa mensajes entrantes
+  ai-orchestrator/      BullMQ worker — LLM, audio, embeddings (perfil ai)
+  dashboard/            Next.js 15 standalone — panel admin (port 3001)
 packages/
   platform-data/
   config/
@@ -485,6 +486,10 @@ src/
   config/
     env.js
 ```
+
+`apps/dashboard` es un proyecto Next.js independiente (TypeScript, pnpm, Drizzle ORM).
+Usa dos conexiones de BD: `DATABASE_URL` → `platform`, `TENANT_DATABASE_URL` → `tenant_shared_low`.
+No importa paquetes del monorepo raíz; se construye con su propio Dockerfile.
 
 Mantener `src` solo para soporte transversal que aun no se ha movido a packages o apps.
 
@@ -543,3 +548,18 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --
 ```
 
 No documentar ni ejecutar comandos de migracion desde esta aplicacion.
+
+Dashboard (desde `apps/dashboard/`):
+
+```bash
+pnpm dev          # Servidor de desarrollo (port 3001)
+pnpm build        # Build de producción
+pnpm admin:create # Crear primer usuario admin
+```
+
+Deploy completo (desde la raiz del repo):
+
+```bash
+# Ver DEPLOY.md para la guia completa
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml up -d --build
+```

@@ -108,3 +108,37 @@ VALUES
   ('premium', 'Premium', 'premium', true, 3000, 500, 1000000, 'shared-medium'),
   ('enterprise', 'Enterprise', 'enterprise', true, 20000, 5000, 10000000, 'dedicated-db')
 ON CONFLICT (code) DO NOTHING;
+
+-- ── Panel admin tables ─────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS panel_users (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  username      varchar(64) UNIQUE NOT NULL,
+  email         varchar(256) UNIQUE NOT NULL,
+  password_hash text NOT NULL,
+  role          varchar(32) NOT NULL,
+  tenant_id     uuid REFERENCES tenants(id) ON DELETE SET NULL,
+  is_active     boolean NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS panel_sessions (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       uuid NOT NULL REFERENCES panel_users(id) ON DELETE CASCADE,
+  token_hash    text UNIQUE NOT NULL,
+  expires_at    timestamptz NOT NULL,
+  is_active     boolean NOT NULL DEFAULT true,
+  ip_address    varchar(45),
+  user_agent    text,
+  revoked_at    timestamptz,
+  revoke_reason varchar(64),
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS panel_rate_limits (
+  key              varchar(256) PRIMARY KEY,
+  count            integer NOT NULL DEFAULT 0,
+  first_attempt_at timestamptz,
+  blocked_until    timestamptz
+);

@@ -253,6 +253,9 @@ services:
     mem_reservation: 64m
     pids_limit: 64
     env_file: .env
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?ADMIN_DOMAIN is required}
     ports:
       - "80:80"
       - "443:443"
@@ -264,6 +267,8 @@ services:
       api:
         condition: service_healthy
       whatsapp:
+        condition: service_healthy
+      dashboard:
         condition: service_healthy
     networks:
       - internal
@@ -299,6 +304,46 @@ services:
         nginx -g 'daemon off;'
     networks:
       - internal
+
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+    image: jestsolution.dev/dashboard:prod
+    container_name: jestsolution-dashboard
+    restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 384m
+    mem_reservation: 128m
+    pids_limit: 64
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_APP_URL: https://${ADMIN_DOMAIN:?ADMIN_DOMAIN is required}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD}@postgres:5432/${PLATFORM_DB_NAME:-platform}
+      TENANT_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
+      AUTH_SECRET: ${DASHBOARD_AUTH_SECRET:?DASHBOARD_AUTH_SECRET is required}
+      SESSION_TTL_SECONDS: ${DASHBOARD_SESSION_TTL_SECONDS:-28800}
+      ALLOWED_IPS: ${DASHBOARD_ALLOWED_IPS:-}
+      PANEL_DOMAIN: ${ADMIN_DOMAIN}
+      BOT_DOMAIN: ${DOMAIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   certbot:
     image: certbot/certbot:latest

@@ -8,6 +8,10 @@ node_modules/
 .env.prod
 .env.dev.backup
 
+# Dashboard build artifacts
+apps/dashboard/.next/
+apps/dashboard/.env
+
 # Logs
 logs/
 *.log
