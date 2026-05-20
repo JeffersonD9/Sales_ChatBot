@@ -307,11 +307,15 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/health >/dev/null 2>&1 || exit 1"]
+      # El vhost del bot tiene server_name=${DOMAIN}; sin Host correcto
+      # nginx cae al server default y devuelve 404. Forzamos el Host header
+      # para que la request entre al vhost del bot, que tiene location /health
+      # proxiando al api.
+      test: ["CMD-SHELL", "wget -qO- --header=\"Host: $$DOMAIN\" http://127.0.0.1/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     logging:
       driver: json-file
       options:
