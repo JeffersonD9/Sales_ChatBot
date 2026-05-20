@@ -30,8 +30,10 @@ server {
   http2  on;
   server_name ${ADMIN_DOMAIN};
 
-  ssl_certificate     /etc/letsencrypt/live/${ADMIN_DOMAIN}/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/${ADMIN_DOMAIN}/privkey.pem;
+  # Usa el mismo cert SAN emitido para ${DOMAIN} (cubre también ${ADMIN_DOMAIN}).
+  # Certbot guarda SAN certs bajo la carpeta del primer -d (el dominio primario).
+  ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
   ssl_protocols       TLSv1.2 TLSv1.3;
   ssl_ciphers         ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5;
   ssl_prefer_server_ciphers on;
