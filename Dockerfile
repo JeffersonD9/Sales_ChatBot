@@ -10,6 +10,16 @@ FROM node:20-alpine AS base
 
 WORKDIR /app
 COPY package*.json ./
+# Copiamos los package.json de cada workspace ANTES de npm ci para que
+# npm pueda enlazar correctamente los paquetes locales (@whatsapp-saas/*).
+COPY packages/config/package.json ./packages/config/package.json
+COPY packages/http-runtime/package.json ./packages/http-runtime/package.json
+COPY packages/logger/package.json ./packages/logger/package.json
+COPY packages/notifications/package.json ./packages/notifications/package.json
+COPY packages/platform-data/package.json ./packages/platform-data/package.json
+COPY packages/queues/package.json ./packages/queues/package.json
+COPY packages/shared-types/package.json ./packages/shared-types/package.json
+COPY packages/shared-utils/package.json ./packages/shared-utils/package.json
 
 FROM base AS dev
 
