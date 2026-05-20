@@ -270,8 +270,11 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.REGISTRY_URL }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          # Para ghcr.io usamos las credenciales built-in del workflow:
+          # github.actor + GITHUB_TOKEN (requiere `permissions: packages: write`).
+          # Para registries externos (Docker Hub), define DOCKER_USERNAME/DOCKER_PASSWORD.
+          username: ${{ secrets.DOCKER_USERNAME || github.actor }}
+          password: ${{ secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
 
       - name: Build and push app image
         if: needs.detect.outputs.app_changed == 'true'
@@ -341,8 +344,10 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          # Si DOCKER_USERNAME/DOCKER_PASSWORD no están definidos, se usan
+          # las credenciales built-in del workflow para login a GHCR en el VPS.
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME || github.actor }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
           REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
           APP_IMAGE: ${{ needs.build-images.outputs.app_image }}
           DASHBOARD_IMAGE: ${{ needs.build-images.outputs.dashboard_image }}
