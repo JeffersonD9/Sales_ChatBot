@@ -21,7 +21,112 @@ cd /opt/whatsapp-saas && git pull && bash infra/scripts/deploy-prod.sh
 
 ---
 
-## 1. Hardening SSH (alta prioridad, riesgoso)
+## 0. Monitorear ataques SSH (read-only, sin riesgo)
+
+El VPS recibe scans 24/7 desde botnets (Azure, GCP, ISPs varios). Es ruido
+normal de internet, no ataque dirigido. La defensa activa la hace **Fail2Ban**
++ `PasswordAuthentication=no` + ciphers modernos.
+
+### Comandos de monitoreo
+
+```bash
+# Estado actual: IPs baneadas en este momento
+fail2ban-client status sshd
+
+# Ataques fallidos de las últimas 24h (todos los logs sshd)
+journalctl -u ssh --since "24 hours ago" | grep -iE "failed|invalid user|too many"
+
+# Top 10 IPs atacantes (últimas 24h)
+journalctl -u ssh --since "24 hours ago" --no-pager \
+  | grep -oP "from \K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" \
+  | sort | uniq -c | sort -rn | head -10
+
+# Top 10 usernames que los bots prueban (catálogo del ataque)
+journalctl -u ssh --since "24 hours ago" --no-pager \
+  | grep -oP "Invalid user \K[^ ]+" \
+  | sort | uniq -c | sort -rn | head -10
+
+# Histórico de baneos (todas las IPs que Fail2Ban ha bloqueado alguna vez)
+zgrep -h "Ban " /var/log/fail2ban.log* 2>/dev/null \
+  | grep -oP "Ban \K[0-9.]+" | sort | uniq -c | sort -rn | head -20
+
+# Ver una IP específica: ¿está baneada, hasta cuándo?
+fail2ban-client status sshd
+fail2ban-client get sshd banip --with-time
+```
+
+### Cómo interpretar lo que veas
+
+| Patrón en logs | Qué significa |
+|---|---|
+| `Failed password for root from <IP>` | Bot probando passwords. Inofensivo: PasswordAuthentication=no los rechaza antes. |
+| `Invalid user xxx from <IP>` | Bot probando usuarios genéricos (admin, ubuntu, oracle). Sin cuenta → no entra. |
+| `Unable to negotiate ... no matching host key type` | Bot con cifrado viejo (ecdsa-sha2-nistp256). Nuestros ciphers modernos los cortan en handshake. |
+| `Too many authentication failures` | El bot superó MaxAuthTries=3 → sshd cierra la conexión. |
+| `Connection reset by authenticating user root <IP>` | Conexión legítima que se cerró (timeout o cierre del cliente). Mirar si la IP es tuya. |
+| `Banned IP list: ...` en fail2ban-client | IPs activamente bloqueadas a nivel iptables/nftables. |
+
+### IPs que NO son ataques (no alarmarse)
+
+- **Tu propia IP** sale en el login banner (`Last login from X.X.X.X`). Si la ves en el top atacantes pero entras OK, fail2ban no te banea (los logins exitosos resetean el contador).
+- `169.254.0.1` o `127.0.0.1` son loopback / link-local internos.
+- IPs de **GitHub Actions** durante runs del pipeline (cambian, son AWS us-east).
+
+### Cuándo preocuparse de verdad
+
+- Si **Currently banned** crece mucho más rápido de lo normal (decenas/hora) → posible ataque dirigido, revisar threat intel de la IP.
+- Si ves intentos exitosos (`Accepted password` o `Accepted publickey`) de IPs desconocidas → emergencia, rotar todas las keys.
+- Si fail2ban deja de banear (Currently banned = 0 durante días) → verificar que el servicio esté corriendo: `systemctl status fail2ban`.
+
+---
+
+## 1. Hardening SSH ✅ COMPLETADO (2026-05-20)
+
+**Estado:** aplicado vía `/root/harden-ssh.sh` + parche al override de cloud-init.
+
+- ✅ `PasswordAuthentication=no` (login sólo con clave SSH)
+- ✅ `PermitRootLogin=prohibit-password` (root sólo con clave)
+- ✅ `MaxAuthTries=3` (kick a la cuarta)
+- ✅ `ClientAliveInterval=300` / `CountMax=2` (kick conexiones idle)
+- ✅ Ciphers/MACs/KEX modernos (curve25519, chacha20-poly1305, aes256-gcm)
+- ✅ `X11Forwarding/AgentForwarding/TcpForwarding=no`
+- ✅ Fail2Ban activo (3 fails → ban 1h, incremental hasta 1 semana)
+- ✅ `/etc/ssh/sshd_config.d/50-cloud-init.conf` parcheado (tenía `PasswordAuthentication yes` que ganaba por orden lexicográfico)
+- ✅ `authorized_keys` deduplicado (3 entradas duplicadas → 1)
+- ✅ Puerto **22 mantenido** (decisión consciente: key-only + fail2ban > port obscurity; ahorra complejidad de firewall/secrets/monitoreo)
+
+### Verificación
+
+```bash
+sshd -T | grep -Ei "passwordauth|permitroot|maxauthtries"
+# Esperado:
+#   permitrootlogin without-password
+#   maxauthtries 3
+#   passwordauthentication no
+
+fail2ban-client status sshd
+# Esperado: jail activo, "Currently banned" puede ser >= 0 según tráfico
+```
+
+### Si alguna vez necesitas revertir
+
+Backups guardados en `/root/backups/`:
+- `sshd_config.<fecha>.bak` — config original completa
+- `50-cloud-init.conf.<fecha>.bak` — drop-in cloud-init pre-parche
+- `authorized_keys.<fecha>.bak` — antes del dedup
+
+Para deshacer todo:
+```bash
+ls /root/backups/sshd_config.*.bak
+cp /root/backups/sshd_config.<fecha>.bak /etc/ssh/sshd_config
+rm /etc/ssh/sshd_config.d/99-hardening.conf
+cp /root/backups/50-cloud-init.conf.<fecha>.bak /etc/ssh/sshd_config.d/50-cloud-init.conf
+sshd -t && systemctl reload ssh
+```
+
+### Si en el futuro quieres añadir más capas
+
+(NO obligatorio — el hardening actual ya está al nivel CIS/Mozilla intermediate.)
 
 **Objetivo:** reducir superficie de ataque del puerto 22.
 
