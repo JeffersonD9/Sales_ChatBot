@@ -1,5 +1,6 @@
 'use client'
 
+import { useDataTable } from '@/hooks/use-data-table'
 import {
   type ColumnDef,
   type SortingState,
@@ -9,7 +10,6 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { useState } from 'react'
-import { useDataTable } from '@/hooks/use-data-table'
 import { DataTablePagination } from './pagination'
 import { DataTableToolbar } from './toolbar'
 import type { DataTableProps } from './types'
@@ -126,19 +126,22 @@ export function DataTable<TData>({
 
 // Skeleton para el Suspense fallback
 export function TableSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) {
+  const rowKeys = Array.from({ length: rows }, (_, i) => `skeleton-row-${i}`)
+  const colKeys = Array.from({ length: cols }, (_, i) => `skeleton-col-${i}`)
+
   return (
     <div className="space-y-4">
       <div className="h-9 w-64 rounded-md bg-muted animate-pulse" />
       <div className="overflow-hidden rounded-md border border-border">
         <div className="h-10 bg-muted/40 border-b border-border" />
-        {Array.from({ length: rows }).map((_, i) => (
+        {rowKeys.map((rowKey, i) => (
           <div
-            key={i}
+            key={rowKey}
             className="flex h-12 items-center gap-4 px-4 border-b border-border last:border-0"
           >
-            {Array.from({ length: cols }).map((_, j) => (
+            {colKeys.map((colKey, j) => (
               <div
-                key={j}
+                key={colKey}
                 className="h-4 flex-1 rounded bg-muted animate-pulse"
                 style={{ animationDelay: `${(i * cols + j) * 50}ms` }}
               />

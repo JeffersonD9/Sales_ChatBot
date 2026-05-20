@@ -1,8 +1,8 @@
 'use client'
 
+import { cn } from '@/lib/utils'
 import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
 
 interface CopyButtonProps {
   value: string
@@ -20,6 +20,7 @@ export function CopyButton({ value, className }: CopyButtonProps) {
 
   return (
     <button
+      type="button"
       onClick={handleCopy}
       title={copied ? 'Copiado' : 'Copiar'}
       className={cn(

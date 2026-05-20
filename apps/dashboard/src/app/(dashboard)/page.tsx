@@ -1,17 +1,14 @@
+import { StatusBadge } from '@/components/shared/status-badge'
+import { formatCurrency, formatRelativeTime } from '@/lib/utils'
+import { getDashboardStats, getRecentOrders } from '@/queries/dashboard'
+import { Building2, MessageSquare, ShoppingCart, TrendingUp } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Building2, MessageSquare, ShoppingCart, TrendingUp } from 'lucide-react'
-import { StatusBadge } from '@/components/shared/status-badge'
-import { getDashboardStats, getRecentOrders } from '@/queries/dashboard'
-import { formatCurrency, formatRelativeTime } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
 export default async function DashboardPage() {
-  const [stats, recentOrders] = await Promise.all([
-    getDashboardStats(),
-    getRecentOrders(8),
-  ])
+  const [stats, recentOrders] = await Promise.all([getDashboardStats(), getRecentOrders(8)])
 
   return (
     <div className="space-y-6">
@@ -64,9 +61,7 @@ export default async function DashboardPage() {
 
         <div className="divide-y divide-border">
           {recentOrders.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-              Sin órdenes aún
-            </p>
+            <p className="px-5 py-8 text-center text-sm text-muted-foreground">Sin órdenes aún</p>
           ) : (
             recentOrders.map((order) => (
               <div key={order.id} className="flex items-center gap-3 px-5 py-3">
@@ -75,10 +70,7 @@ export default async function DashboardPage() {
                     {order.customer_name ?? order.customer_phone}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    <Link
-                      href={`/tenants/${order.tenant_slug}`}
-                      className="hover:underline"
-                    >
+                    <Link href={`/tenants/${order.tenant_slug}`} className="hover:underline">
                       {order.tenant_name}
                     </Link>
                     {' · '}
@@ -107,10 +99,10 @@ function StatCard({
   sub,
   danger,
 }: {
-  icon:    React.ReactNode
-  label:   string
-  value:   number | string
-  sub?:    string
+  icon: React.ReactNode
+  label: string
+  value: number | string
+  sub?: string
   danger?: string
 }) {
   return (
@@ -120,7 +112,7 @@ function StatCard({
         <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
       </div>
       <p className="mt-3 text-3xl font-semibold text-foreground">{value}</p>
-      {sub    && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
       {danger && <p className="mt-1 text-xs text-destructive">{danger}</p>}
     </div>
   )

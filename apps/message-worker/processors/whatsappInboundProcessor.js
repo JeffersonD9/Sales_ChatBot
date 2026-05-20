@@ -12,6 +12,9 @@ import loggerModule from '@whatsapp-saas/logger';
 const require = createRequire(import.meta.url);
 const { getFlow }       = require('../core/flows/index.js');
 const { buildServices } = require('../core/ai/services.js');
+const { extractInput }  = require('../core/whatsapp/parser.js');
+const { sendText }      = require('../core/whatsapp/sender.js');
+const antiBanGuard      = require('../../../packages/platform-data/src/integrations/whatsapp/antiBanGuard.js');
 
 const tenantLoader = platformData.tenantLoader;
 const { getState, saveState } = stateManager;
@@ -80,15 +83,39 @@ async function dispatch(tenantSlug, webhookBody) {
         }, '[Processor] Mensaje recibido');
 
         try {
-          const session  = await getState(tenant, waFrom);
-          const flowType = tenant.bot_config?.flow_type ?? tenant.botConfig?.flow_type;
-          const { engine, aiCapabilities } = getFlow(flowType);
           const tenantForFlows = {
             ...tenant,
             bot_config:      tenant.bot_config      ?? tenant.botConfig,
             wa_token:        tenant.wa_token        ?? tenant.whatsapp?.token,
             phone_number_id: tenant.phone_number_id ?? tenant.whatsapp?.phoneNumberId,
           };
+          const parsed = extractInput(message);
+          const antiBanInbound = await antiBanGuard.handleInboundMessage(tenantForFlows, waFrom, parsed.text || '');
+
+          if (antiBanInbound.optOut) {
+            await sendText(
+              waFrom,
+              'Listo, no te enviaremos mas mensajes por WhatsApp. Si necesitas ayuda, puedes escribirnos de nuevo cuando quieras.',
+              tenantForFlows,
+              { antiBanBypass: true }
+            );
+            summary.messagesProcessed += 1;
+            logger.info({
+              metric: 'worker.message.opt_out',
+              tenantSlug,
+              waFrom,
+              msgId,
+            }, '[Processor] Opt-out procesado');
+            continue;
+          }
+
+          const session  = await getState(tenant, waFrom);
+          if (antiBanInbound.asksForHuman) {
+            session.data = { ...(session.data || {}), escalated: true, humanRequestedAt: new Date().toISOString() };
+          }
+
+          const flowType = tenant.bot_config?.flow_type ?? tenant.botConfig?.flow_type;
+          const { engine, aiCapabilities } = getFlow(flowType);
           const services = buildServices(tenantForFlows, aiCapabilities);
           await engine.processMessage(waFrom, message, session, tenantForFlows, notifier, services);
           await saveState(tenant, waFrom, session);

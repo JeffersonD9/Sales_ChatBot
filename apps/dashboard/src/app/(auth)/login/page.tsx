@@ -1,5 +1,5 @@
-import { Suspense } from 'react'
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import LoginForm from './login-form'
 
 export const metadata: Metadata = {
@@ -15,9 +15,7 @@ export default function LoginPage() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <span className="text-2xl">💬</span>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            JestSolution
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">JestSolution</h1>
           <p className="text-sm text-muted-foreground">Panel Administrativo</p>
         </div>
 

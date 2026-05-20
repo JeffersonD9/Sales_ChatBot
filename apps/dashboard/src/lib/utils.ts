@@ -1,4 +1,4 @@
-import { clsx, type ClassValue } from 'clsx'
+import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
 export function cn(...inputs: ClassValue[]) {
@@ -26,10 +26,10 @@ export function formatRelativeTime(date: Date | string | null | undefined): stri
   const d = new Date(date)
   const diffMs = Date.now() - d.getTime()
   const diffMin = Math.floor(diffMs / 60_000)
-  if (diffMin < 1)  return 'ahora mismo'
+  if (diffMin < 1) return 'ahora mismo'
   if (diffMin < 60) return `hace ${diffMin}m`
   const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24)   return `hace ${diffH}h`
+  if (diffH < 24) return `hace ${diffH}h`
   const diffD = Math.floor(diffH / 24)
   return `hace ${diffD}d`
 }
@@ -38,7 +38,7 @@ export function slugify(text: string): string {
   return text
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/\p{Diacritic}/gu, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 }

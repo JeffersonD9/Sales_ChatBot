@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation'
-import { validateSession } from '@/lib/auth'
 import { AdminLayout } from '@/components/layout/admin-layout'
+import { validateSession } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 
 // Server Component: valida sesión en DB, luego pasa user al AdminLayout (Client).
 // El middleware ya hizo el check rápido de cookie — aquí hacemos la validación real.

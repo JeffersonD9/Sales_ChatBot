@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server'
 import type { ApiError, ApiSuccess, PaginationMeta } from '@/types/api'
+import { NextResponse } from 'next/server'
 
 export function ok<T>(data: T, meta?: PaginationMeta, status = 200) {
   return NextResponse.json<ApiSuccess<T>>({ data, ...(meta && { meta }) }, { status })
@@ -10,7 +10,8 @@ export function created<T>(data: T) {
 }
 
 export function err(message: string, status = 400, details?: unknown) {
-  return NextResponse.json<ApiError>({ error: message, ...(details && { details }) }, { status })
+  const body: ApiError = details !== undefined ? { error: message, details } : { error: message }
+  return NextResponse.json<ApiError>(body, { status })
 }
 
 export function unauthorized(message = 'No autenticado') {

@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useCallback } from 'react'
 
 // El estado del DataTable (sort, paginación, búsqueda) vive en la URL.
 // Ventajas: bookmarkable, el botón atrás funciona, sharable, el Server
@@ -34,6 +34,17 @@ export function useDataTable(totalCount: number, defaultPageSize = 20) {
     [router, pathname, searchParams],
   )
 
+  // Callbacks estables — referencias fijas para que los useEffect
+  // en componentes hijos no disparen en cada re-render del padre.
+  const setPage = useCallback((p: number) => update({ page: p === 1 ? null : String(p) }), [update])
+  const setPageSize = useCallback((s: number) => update({ size: String(s), page: null }), [update])
+  const setSort = useCallback(
+    (col: string, d: 'asc' | 'desc') =>
+      update({ sort: col || null, dir: col ? d : null, page: null }),
+    [update],
+  )
+  const setQuery = useCallback((q: string) => update({ q: q || null, page: null }), [update])
+
   return {
     page,
     pageSize,
@@ -42,11 +53,10 @@ export function useDataTable(totalCount: number, defaultPageSize = 20) {
     query,
     pageCount,
     totalCount,
-    setPage:     (p: number) => update({ page: p === 1 ? null : String(p) }),
-    setPageSize: (s: number) => update({ size: String(s), page: null }),
-    setSort:     (col: string, d: 'asc' | 'desc') =>
-      update({ sort: col || null, dir: col ? d : null, page: null }),
-    setQuery:    (q: string) => update({ q: q || null, page: null }),
+    setPage,
+    setPageSize,
+    setSort,
+    setQuery,
   }
 }
 

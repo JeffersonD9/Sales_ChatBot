@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useState } from 'react'
 
 export default function LoginForm() {
   const router = useRouter()
@@ -47,10 +47,7 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-sm">
       <div className="space-y-1">
-        <label
-          htmlFor="username"
-          className="text-sm font-medium leading-none text-foreground"
-        >
+        <label htmlFor="username" className="text-sm font-medium leading-none text-foreground">
           Usuario
         </label>
         <input
@@ -65,10 +62,7 @@ export default function LoginForm() {
       </div>
 
       <div className="space-y-1">
-        <label
-          htmlFor="password"
-          className="text-sm font-medium leading-none text-foreground"
-        >
+        <label htmlFor="password" className="text-sm font-medium leading-none text-foreground">
           Contraseña
         </label>
         <input

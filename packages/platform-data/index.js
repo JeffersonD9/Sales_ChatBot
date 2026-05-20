@@ -20,6 +20,7 @@ const tenantDb = require('./src/tenant/database/tenantDb');
 const catalogRepository = require('./src/tenant/repositories/catalogRepository');
 const whatsappConfigRepository = require('./src/tenant/repositories/whatsappConfigRepository');
 const whatsappSender = require('./src/integrations/whatsapp/sender');
+const tenantConfigEvents = require('./src/events/tenantConfigEvents');
 
 module.exports = {
   db,
@@ -42,4 +43,5 @@ module.exports = {
   catalogRepository,
   whatsappConfigRepository,
   whatsappSender,
+  tenantConfigEvents,
 };

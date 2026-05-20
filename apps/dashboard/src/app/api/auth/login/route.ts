@@ -1,6 +1,3 @@
-import { eq } from 'drizzle-orm'
-import { type NextRequest } from 'next/server'
-import { z } from 'zod'
 import { db } from '@/db'
 import { panelUsers } from '@/db/schema'
 import { createSession, sessionCookieOptions } from '@/lib/auth'
@@ -8,6 +5,9 @@ import { SESSION_COOKIE } from '@/lib/constants'
 import { verifyPassword } from '@/lib/password'
 import { checkRateLimit, clearRateLimit, recordFailedAttempt } from '@/lib/rate-limit'
 import { err, ok, unauthorized } from '@/lib/response'
+import { eq } from 'drizzle-orm'
+import type { NextRequest } from 'next/server'
+import { z } from 'zod'
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -34,9 +34,11 @@ export async function POST(req: NextRequest) {
 
   const { username, password } = parsed.data
 
-  const user = await db.query.panelUsers.findFirst({
-    where: eq(panelUsers.username, username),
-  }).catch(() => null)
+  const user = await db.query.panelUsers
+    .findFirst({
+      where: eq(panelUsers.username, username),
+    })
+    .catch(() => null)
 
   // Respuesta idéntica para usuario inexistente y contraseña incorrecta
   // (evita user enumeration)
@@ -53,11 +55,7 @@ export async function POST(req: NextRequest) {
 
   await clearRateLimit(rateLimitKey)
 
-  const token = await createSession(
-    user.id,
-    ip,
-    req.headers.get('user-agent'),
-  )
+  const token = await createSession(user.id, ip, req.headers.get('user-agent'))
 
   const response = ok({ username: user.username, role: user.role })
   response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions)

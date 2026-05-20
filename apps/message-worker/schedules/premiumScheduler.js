@@ -132,6 +132,14 @@ export async function runDailySummary() {
 }
 
 export function startScheduler() {
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_PREMIUM_SCHEDULER !== 'true') {
+    logger.warn(
+      { enableWith: 'ENABLE_PREMIUM_SCHEDULER=true' },
+      '[Scheduler] Premium scheduler deshabilitado en produccion hasta completar compatibilidad multi-DB'
+    );
+    return;
+  }
+
   const recoveryHour = parseInt(process.env.CART_RECOVERY_HOUR || '9', 10);
   const summaryHour  = parseInt(process.env.DAILY_SUMMARY_HOUR  || '20', 10);
 

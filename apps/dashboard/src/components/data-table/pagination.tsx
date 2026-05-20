@@ -32,7 +32,9 @@ export function DataTablePagination({
             className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             {PAGE_SIZE_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>
+                {s}
+              </option>
             ))}
           </select>
         </div>
@@ -50,10 +52,18 @@ export function DataTablePagination({
             {page} / {pageCount}
           </span>
 
-          <NavBtn onClick={() => onPageChange(page + 1)} disabled={page >= pageCount} title="Siguiente">
+          <NavBtn
+            onClick={() => onPageChange(page + 1)}
+            disabled={page >= pageCount}
+            title="Siguiente"
+          >
             <ChevronRight className="h-4 w-4" />
           </NavBtn>
-          <NavBtn onClick={() => onPageChange(pageCount)} disabled={page >= pageCount} title="Última">
+          <NavBtn
+            onClick={() => onPageChange(pageCount)}
+            disabled={page >= pageCount}
+            title="Última"
+          >
             <ChevronsRight className="h-4 w-4" />
           </NavBtn>
         </div>
@@ -75,6 +85,7 @@ function NavBtn({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       title={title}

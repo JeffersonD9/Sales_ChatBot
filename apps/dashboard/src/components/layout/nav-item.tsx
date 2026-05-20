@@ -1,9 +1,9 @@
 'use client'
 
+import { cn } from '@/lib/utils'
+import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import type { LucideIcon } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface NavItemProps {
   href: string
@@ -15,9 +15,7 @@ interface NavItemProps {
 
 export function NavItem({ href, label, icon: Icon, exact, collapsed }: NavItemProps) {
   const pathname = usePathname()
-  const isActive = exact
-    ? pathname === href
-    : pathname === href || pathname.startsWith(`${href}/`)
+  const isActive = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
 
   return (
     <Link

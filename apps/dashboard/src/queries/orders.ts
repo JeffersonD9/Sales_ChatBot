@@ -1,66 +1,75 @@
-import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { db, tenantDb } from '@/db'
 import { orders, tenants } from '@/db/schema'
+import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 
 export type OrderRow = {
-  id:             string
-  tenant_id:      string
-  tenant_name:    string
-  tenant_slug:    string
+  id: string
+  tenant_id: string
+  tenant_name: string
+  tenant_slug: string
   customer_phone: string
-  customer_name:  string | null
-  total:          number
-  status:         string
-  items_count:    number
-  created_at:     Date
+  customer_name: string | null
+  total: number
+  status: string
+  items_count: number
+  created_at: Date
 }
 
 export type OrderListParams = {
-  page:     number
+  page: number
   pageSize: number
-  q?:       string
-  status?:  string
-  tenant?:  string   // slug
-  sort?:    string
-  dir?:     'asc' | 'desc'
+  q?: string
+  status?: string
+  tenant?: string // slug
+  sort?: string
+  dir?: 'asc' | 'desc'
 }
 
 function buildOrderBy(sort: string, dir: 'asc' | 'desc') {
   const fn = dir === 'desc' ? desc : asc
   switch (sort) {
-    case 'total':  return fn(orders.total)
-    case 'status': return fn(orders.status)
-    default:       return fn(orders.created_at)
+    case 'total':
+      return fn(orders.total)
+    case 'status':
+      return fn(orders.status)
+    default:
+      return fn(orders.created_at)
   }
 }
 
 export async function getOrderList(params: OrderListParams) {
-  const { page, pageSize, q, status, tenant: tenantSlug, sort = 'created_at', dir = 'desc' } = params
+  const {
+    page,
+    pageSize,
+    q,
+    status,
+    tenant: tenantSlug,
+    sort = 'created_at',
+    dir = 'desc',
+  } = params
 
   // Fetch all tenants from platform DB for enrichment + filtering
   const allTenants = await db
     .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
     .from(tenants)
 
-  const tenantMap = new Map(allTenants.map(t => [t.id, t]))
+  const tenantMap = new Map(allTenants.map((t) => [t.id, t]))
 
   // Build tenant-level filters
   let allowedTenantIds: string[] | undefined
 
   if (tenantSlug) {
-    allowedTenantIds = allTenants
-      .filter(t => t.slug === tenantSlug)
-      .map(t => t.id)
+    allowedTenantIds = allTenants.filter((t) => t.slug === tenantSlug).map((t) => t.id)
   }
 
   if (q) {
     const nameMatches = allTenants
-      .filter(t => t.name.toLowerCase().includes(q.toLowerCase()))
-      .map(t => t.id)
+      .filter((t) => t.name.toLowerCase().includes(q.toLowerCase()))
+      .map((t) => t.id)
 
     // If filtering by tenant slug too, intersect; otherwise union with customer search
     if (allowedTenantIds) {
-      allowedTenantIds = allowedTenantIds.filter(id => nameMatches.includes(id))
+      allowedTenantIds = allowedTenantIds.filter((id) => nameMatches.includes(id))
     } else {
       allowedTenantIds = nameMatches.length > 0 ? nameMatches : undefined
     }
@@ -78,7 +87,7 @@ export async function getOrderList(params: OrderListParams) {
     conditions.push(
       or(
         ilike(orders.customer_phone, `%${q}%`),
-        ilike(orders.customer_name,  `%${q}%`),
+        ilike(orders.customer_name, `%${q}%`),
         allowedTenantIds?.length ? inArray(orders.tenant_id, allowedTenantIds) : sql`false`,
       ),
     )
@@ -91,14 +100,14 @@ export async function getOrderList(params: OrderListParams) {
   const [rows, [{ total }]] = await Promise.all([
     tenantDb
       .select({
-        id:             orders.id,
-        tenant_id:      orders.tenant_id,
+        id: orders.id,
+        tenant_id: orders.tenant_id,
         customer_phone: orders.customer_phone,
-        customer_name:  orders.customer_name,
-        total:          orders.total,
-        status:         orders.status,
-        items_count:    sql<number>`jsonb_array_length(${orders.items})`,
-        created_at:     orders.created_at,
+        customer_name: orders.customer_name,
+        total: orders.total,
+        status: orders.status,
+        items_count: sql<number>`jsonb_array_length(${orders.items})`,
+        created_at: orders.created_at,
       })
       .from(orders)
       .where(where)
@@ -110,7 +119,7 @@ export async function getOrderList(params: OrderListParams) {
   ])
 
   return {
-    rows: rows.map(r => ({
+    rows: rows.map((r) => ({
       ...r,
       tenant_name: tenantMap.get(r.tenant_id)?.name ?? '—',
       tenant_slug: tenantMap.get(r.tenant_id)?.slug ?? '',

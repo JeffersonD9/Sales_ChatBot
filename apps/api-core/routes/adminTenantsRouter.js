@@ -4,6 +4,8 @@ import cryptoModule from '@whatsapp-saas/shared-utils';
 import loggerModule from '@whatsapp-saas/logger';
 
 const tenantRepo = platformData.tenantRepository;
+const tenantLoader = platformData.tenantLoader;
+const { publishConfigUpdated } = platformData.tenantConfigEvents;
 const { encrypt } = cryptoModule;
 const { logger } = loggerModule;
 
@@ -100,6 +102,10 @@ router.patch('/:slug', async (req, res) => {
   try {
     const updated = await tenantRepo.update(req.params.slug, fields);
     if (!updated) return res.status(404).json({ ok: false, error: 'Tenant no encontrado' });
+
+    tenantLoader.invalidate(req.params.slug);
+    void publishConfigUpdated(req.params.slug, 'api-core');
+
     return res.json({ ok: true, data: updated });
   } catch (err) {
     logger.error({ slug: req.params.slug, err: err.message }, '[Admin:Tenants] update error');

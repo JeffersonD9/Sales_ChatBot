@@ -1,9 +1,9 @@
-import { type NextRequest } from 'next/server'
-import { z } from 'zod'
 import { validateSession } from '@/lib/auth'
+import { created, err, ok, serverError, unauthorized } from '@/lib/response'
 import { slugify } from '@/lib/utils'
 import { createTenant, getTenantList } from '@/queries/tenants'
-import { created, err, ok, serverError, unauthorized } from '@/lib/response'
+import type { NextRequest } from 'next/server'
+import { z } from 'zod'
 
 export async function GET(req: NextRequest) {
   const user = await validateSession()
@@ -11,19 +11,19 @@ export async function GET(req: NextRequest) {
 
   const sp = req.nextUrl.searchParams
   const params = {
-    page:     Math.max(1, Number(sp.get('page') ?? 1)),
+    page: Math.max(1, Number(sp.get('page') ?? 1)),
     pageSize: Number(sp.get('size') ?? 20),
-    sort:     sp.get('sort') ?? 'created_at',
-    dir:      (sp.get('dir') ?? 'desc') as 'asc' | 'desc',
-    query:    sp.get('q') ?? '',
+    sort: sp.get('sort') ?? 'created_at',
+    dir: (sp.get('dir') ?? 'desc') as 'asc' | 'desc',
+    query: sp.get('q') ?? '',
   }
 
   try {
     const { data, total } = await getTenantList(params)
     return ok(data, {
       total,
-      page:      params.page,
-      pageSize:  params.pageSize,
+      page: params.page,
+      pageSize: params.pageSize,
       pageCount: Math.ceil(total / params.pageSize),
     })
   } catch (e) {
@@ -32,10 +32,10 @@ export async function GET(req: NextRequest) {
 }
 
 const createSchema = z.object({
-  name:        z.string().min(2, 'Mínimo 2 caracteres').max(256),
+  name: z.string().min(2, 'Mínimo 2 caracteres').max(256),
   owner_phone: z.string().min(7).max(32),
   owner_email: z.string().email().optional(),
-  plan:        z.enum(['starter', 'pro', 'enterprise']).default('starter'),
+  plan: z.enum(['starter', 'pro', 'enterprise']).default('starter'),
 })
 
 export async function POST(req: NextRequest) {

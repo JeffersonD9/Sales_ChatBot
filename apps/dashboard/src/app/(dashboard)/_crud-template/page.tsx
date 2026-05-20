@@ -14,12 +14,12 @@
  * → Next.js re-renderiza el Server Component con datos frescos via router.refresh().
  */
 
-import { Suspense } from 'react'
-import type { Metadata } from 'next'
-import { PageHeader } from '@/components/shared/page-header'
-import { DataTable, TableSkeleton } from '@/components/data-table/data-table'
-import { type ColumnDef } from '@/components/data-table/types'
 import { DataTableColumnHeader } from '@/components/data-table/column-header'
+import { DataTable, TableSkeleton } from '@/components/data-table/data-table'
+import type { ColumnDef } from '@/components/data-table/types'
+import { PageHeader } from '@/components/shared/page-header'
+import type { Metadata } from 'next'
+import { Suspense } from 'react'
 
 export const metadata: Metadata = { title: 'Recurso' }
 
@@ -70,9 +70,7 @@ const columns: ColumnDef<ResourceRow>[] = [
   {
     accessorKey: 'name',
     header: ({ column }) => <DataTableColumnHeader column={column} title="Nombre" />,
-    cell: ({ row }) => (
-      <span className="font-medium text-foreground">{row.original.name}</span>
-    ),
+    cell: ({ row }) => <span className="font-medium text-foreground">{row.original.name}</span>,
   },
   {
     accessorKey: 'status',
@@ -107,11 +105,11 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>
 export default async function ResourcePage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams
 
-  const page     = Math.max(1, Number(sp.page ?? 1))
+  const page = Math.max(1, Number(sp.page ?? 1))
   const pageSize = Number(sp.size ?? 20)
-  const sort     = String(sp.sort ?? 'created_at')
-  const dir      = String(sp.dir ?? 'desc')
-  const query    = String(sp.q ?? '')
+  const sort = String(sp.sort ?? 'created_at')
+  const dir = String(sp.dir ?? 'desc')
+  const query = String(sp.q ?? '')
 
   const { data, total } = await getResources({ page, pageSize, sort, dir, query })
 
@@ -122,7 +120,10 @@ export default async function ResourcePage({ searchParams }: { searchParams: Sea
         description="Descripción del recurso que se administra aquí."
         action={
           // En la vista real: <NuevoRecursoButton />
-          <button className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+          <button
+            type="button"
+            className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
             Nuevo
           </button>
         }

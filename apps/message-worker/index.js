@@ -5,6 +5,7 @@ import platformData from '../../packages/platform-data/index.js';
 import { createRequire } from 'module';
 import { startScheduler } from './schedules/premiumScheduler.js';
 import stateManager from './core/state/manager.js';
+import { setupTenantConfigSubscriber, closeTenantConfigSubscriber } from './subscribers/tenantConfigSubscriber.js';
 
 dotenv.config();
 
@@ -72,6 +73,7 @@ function scheduleReactivations() {
 async function startWorker() {
   const { registerWhatsAppInboundProcessor } = await import('./processors/whatsappInboundProcessor.js');
   registerWhatsAppInboundProcessor();
+  setupTenantConfigSubscriber();
   scheduleBillingCheck();
   startScheduler();
   scheduleReactivations();
@@ -88,7 +90,7 @@ async function shutdown(signal) {
   }
 
   const { closeBullMQ } = await import('@whatsapp-saas/queues/bullmqQueue.js');
-  await Promise.allSettled([closeBullMQ(), closeTenantPools(), closePool(), closeRedis()]);
+  await Promise.allSettled([closeBullMQ(), closeTenantConfigSubscriber(), closeTenantPools(), closePool(), closeRedis()]);
   logger.info({ service: 'worker' }, '[Worker] Conexiones cerradas');
   process.exit(0);
 }

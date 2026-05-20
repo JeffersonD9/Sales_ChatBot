@@ -9,9 +9,9 @@ export type NavItem = {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/',            label: 'Dashboard',     icon: LayoutDashboard, exact: true },
-  { href: '/tenants',     label: 'Tenants',       icon: Building2 },
-  { href: '/orders',      label: 'Órdenes',       icon: ShoppingCart },
-  { href: '/sessions',    label: 'Sesiones',      icon: MessageSquare },
-  { href: '/admin-users', label: 'Usuarios Admin',icon: Users },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/tenants', label: 'Tenants', icon: Building2 },
+  { href: '/orders', label: 'Órdenes', icon: ShoppingCart },
+  { href: '/sessions', label: 'Sesiones', icon: MessageSquare },
+  { href: '/admin-users', label: 'Usuarios Admin', icon: Users },
 ]

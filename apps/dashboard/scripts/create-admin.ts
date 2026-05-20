@@ -8,10 +8,10 @@
  *   DATABASE_URL, ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD
  */
 
+import { eq } from 'drizzle-orm'
 import { db } from '../src/db'
 import { panelUsers } from '../src/db/schema'
 import { hashPassword } from '../src/lib/password'
-import { eq } from 'drizzle-orm'
 
 const username = process.env.ADMIN_USERNAME
 const email = process.env.ADMIN_EMAIL
@@ -30,7 +30,7 @@ if (password.length < 12) {
 
 async function main() {
   const existing = await db.query.panelUsers.findFirst({
-    where: eq(panelUsers.username, username),
+    where: eq(panelUsers.username, username as string),
   })
 
   if (existing) {
@@ -38,11 +38,11 @@ async function main() {
     process.exit(1)
   }
 
-  const passwordHash = await hashPassword(password)
+  const passwordHash = await hashPassword(password as string)
 
   await db.insert(panelUsers).values({
-    username,
-    email,
+    username: username as string,
+    email: email as string,
     password_hash: passwordHash,
     role: 'superadmin',
   })
@@ -51,4 +51,7 @@ async function main() {
   process.exit(0)
 }
 
-main().catch((e) => { console.error(e); process.exit(1) })
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

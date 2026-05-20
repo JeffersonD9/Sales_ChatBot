@@ -1,11 +1,11 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
-import Link from 'next/link'
 import { DataTableColumnHeader } from '@/components/data-table/column-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { OrderRow } from '@/queries/orders'
+import type { ColumnDef } from '@tanstack/react-table'
+import Link from 'next/link'
 import { OrderStatusSelect } from './_components/order-status-select'
 
 export const columns: ColumnDef<OrderRow>[] = [
@@ -14,9 +14,7 @@ export const columns: ColumnDef<OrderRow>[] = [
     header: ({ column }) => <DataTableColumnHeader column={column} title="Cliente" />,
     cell: ({ row }) => (
       <div className="min-w-0">
-        <p className="truncate font-medium text-foreground">
-          {row.original.customer_name ?? '—'}
-        </p>
+        <p className="truncate font-medium text-foreground">{row.original.customer_name ?? '—'}</p>
         <p className="font-mono text-xs text-muted-foreground">{row.original.customer_phone}</p>
       </div>
     ),

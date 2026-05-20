@@ -1,8 +1,8 @@
-import { Suspense } from 'react'
-import type { Metadata } from 'next'
 import { DataTable, TableSkeleton } from '@/components/data-table/data-table'
 import { PageHeader } from '@/components/shared/page-header'
 import { getTenantList } from '@/queries/tenants'
+import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { CreateTenantButton } from './_components/create-tenant-button'
 import { columns } from './columns'
 
@@ -14,11 +14,11 @@ export default async function TenantsPage({ searchParams }: { searchParams: Sear
   const sp = await searchParams
 
   const params = {
-    page:     Math.max(1, Number(sp.page ?? 1)),
+    page: Math.max(1, Number(sp.page ?? 1)),
     pageSize: Number(sp.size ?? 20),
-    sort:     String(sp.sort ?? 'created_at'),
-    dir:      (String(sp.dir ?? 'desc')) as 'asc' | 'desc',
-    query:    String(sp.q ?? ''),
+    sort: String(sp.sort ?? 'created_at'),
+    dir: String(sp.dir ?? 'desc') as 'asc' | 'desc',
+    query: String(sp.q ?? ''),
   }
 
   const { data, total } = await getTenantList(params)

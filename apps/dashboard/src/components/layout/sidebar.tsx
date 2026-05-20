@@ -1,10 +1,10 @@
 'use client'
 
-import { ChevronLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SessionUser } from '@/types/api'
-import { NavItem } from './nav-item'
+import { ChevronLeft } from 'lucide-react'
 import { NAV_ITEMS } from './nav-config'
+import { NavItem } from './nav-item'
 
 interface SidebarProps {
   collapsed: boolean
@@ -55,14 +55,13 @@ export function Sidebar({ collapsed, onToggle, user }: SidebarProps) {
       <div className="flex-shrink-0 space-y-1 border-t border-sidebar-border p-2">
         {!collapsed && (
           <div className="px-2 py-1.5">
-            <p className="truncate text-xs font-medium text-sidebar-foreground">
-              {user.username}
-            </p>
+            <p className="truncate text-xs font-medium text-sidebar-foreground">{user.username}</p>
             <p className="truncate text-xs text-sidebar-foreground/50">{user.role}</p>
           </div>
         )}
 
         <button
+          type="button"
           onClick={onToggle}
           title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
           className={cn(

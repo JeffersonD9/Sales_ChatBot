@@ -1,10 +1,10 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
 import { DataTableColumnHeader } from '@/components/data-table/column-header'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { formatDate } from '@/lib/utils'
 import type { TenantRow } from '@/queries/tenants'
+import type { ColumnDef } from '@tanstack/react-table'
 import { TenantRowActions } from './_components/tenant-row-actions'
 
 export const columns: ColumnDef<TenantRow>[] = [

@@ -1,16 +1,11 @@
-import { and, eq, gt } from 'drizzle-orm'
-import { type NextRequest } from 'next/server'
-import { cookies } from 'next/headers'
 import { db } from '@/db'
 import { panelSessions } from '@/db/schema'
-import {
-  createSession,
-  hashToken,
-  revokeCurrentSession,
-  sessionCookieOptions,
-} from '@/lib/auth'
+import { createSession, hashToken, revokeCurrentSession, sessionCookieOptions } from '@/lib/auth'
 import { SESSION_COOKIE } from '@/lib/constants'
 import { ok, unauthorized } from '@/lib/response'
+import { and, eq, gt } from 'drizzle-orm'
+import { cookies } from 'next/headers'
+import type { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies()

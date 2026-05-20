@@ -1,21 +1,21 @@
-import { count, desc, eq, ilike, or } from 'drizzle-orm'
 import { db } from '@/db'
 import { panelUsers } from '@/db/schema'
 import { hashPassword } from '@/lib/password'
+import { count, desc, eq, ilike, or } from 'drizzle-orm'
 
 export type AdminUserRow = {
-  id:         string
-  username:   string
-  email:      string
-  role:       string
-  is_active:  boolean
+  id: string
+  username: string
+  email: string
+  role: string
+  is_active: boolean
   created_at: Date
 }
 
 export type AdminUserListParams = {
-  page:     number
+  page: number
   pageSize: number
-  q?:       string
+  q?: string
 }
 
 export async function getAdminUserList(params: AdminUserListParams) {
@@ -28,11 +28,11 @@ export async function getAdminUserList(params: AdminUserListParams) {
   const [rows, [{ total }]] = await Promise.all([
     db
       .select({
-        id:         panelUsers.id,
-        username:   panelUsers.username,
-        email:      panelUsers.email,
-        role:       panelUsers.role,
-        is_active:  panelUsers.is_active,
+        id: panelUsers.id,
+        username: panelUsers.username,
+        email: panelUsers.email,
+        role: panelUsers.role,
+        is_active: panelUsers.is_active,
         created_at: panelUsers.created_at,
       })
       .from(panelUsers)
@@ -49,9 +49,9 @@ export async function getAdminUserList(params: AdminUserListParams) {
 
 export type CreateAdminUserData = {
   username: string
-  email:    string
+  email: string
   password: string
-  role:     string
+  role: string
 }
 
 export async function createAdminUser(data: CreateAdminUserData) {
@@ -60,15 +60,15 @@ export async function createAdminUser(data: CreateAdminUserData) {
     .insert(panelUsers)
     .values({
       username: data.username,
-      email:    data.email,
+      email: data.email,
       password_hash,
-      role:     data.role,
+      role: data.role,
     })
     .returning({
-      id:       panelUsers.id,
+      id: panelUsers.id,
       username: panelUsers.username,
-      email:    panelUsers.email,
-      role:     panelUsers.role,
+      email: panelUsers.email,
+      role: panelUsers.role,
     })
   return user
 }

@@ -23,10 +23,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
-      </body>
+    <html lang="es" className="dark" suppressHydrationWarning>
+      <head>
+        {/* Anti-flash: aplica el tema antes de que React hidrate */}
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: inline anti-flash script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t=localStorage.getItem('jsadmin-theme');if(t==='light'){document.documentElement.classList.remove('dark')}else if(t==='dark'){document.documentElement.classList.add('dark')}else if(window.matchMedia('(prefers-color-scheme: dark)').matches){document.documentElement.classList.add('dark')}})()`,
+          }}
+        />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
     </html>
   )
 }

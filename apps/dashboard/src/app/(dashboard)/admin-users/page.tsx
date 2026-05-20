@@ -1,11 +1,11 @@
-import { Suspense } from 'react'
-import type { Metadata } from 'next'
-import { PageHeader } from '@/components/shared/page-header'
 import { DataTable, TableSkeleton } from '@/components/data-table/data-table'
-import { getAdminUserList } from '@/queries/admin-users'
+import { PageHeader } from '@/components/shared/page-header'
 import { validateSession } from '@/lib/auth'
-import { columns } from './columns'
+import { getAdminUserList } from '@/queries/admin-users'
+import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { CreateUserButton } from './_components/create-user-button'
+import { columns } from './columns'
 
 export const metadata: Metadata = { title: 'Usuarios Admin' }
 
@@ -32,10 +32,10 @@ export default async function AdminUsersPage({ searchParams }: Props) {
 }
 
 async function UsersTable({ searchParams }: { searchParams: Props['searchParams'] }) {
-  const sp   = await searchParams
+  const sp = await searchParams
   const page = Math.max(1, Number(sp.page ?? 1))
   const size = Math.min(50, Math.max(10, Number(sp.size ?? 20)))
-  const q    = typeof sp.q === 'string' ? sp.q : undefined
+  const q = typeof sp.q === 'string' ? sp.q : undefined
 
   const { rows, total } = await getAdminUserList({ page, pageSize: size, q })
 

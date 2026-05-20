@@ -1,16 +1,17 @@
 'use client'
 
-import { LogOut, User } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
-import { toast } from 'sonner'
+import { useTheme } from '@/hooks/use-theme'
 import { cn } from '@/lib/utils'
 import type { SessionUser } from '@/types/api'
+import { LogOut, Moon, Sun, User } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 const ROUTE_LABELS: Record<string, string> = {
-  tenants:      'Tenants',
-  orders:       'Órdenes',
-  sessions:     'Sesiones',
-  'admin-users':'Usuarios Admin',
+  tenants: 'Tenants',
+  orders: 'Órdenes',
+  sessions: 'Sesiones',
+  'admin-users': 'Usuarios Admin',
 }
 
 function Breadcrumbs() {
@@ -25,17 +26,12 @@ function Breadcrumbs() {
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
       {segments.map((seg, i) => {
         const label =
-          ROUTE_LABELS[seg] ??
-          seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+          ROUTE_LABELS[seg] ?? seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
         const isLast = i === segments.length - 1
         return (
-          <span key={`${seg}-${i}`} className="flex items-center gap-1.5">
+          <span key={seg} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-muted-foreground/50">/</span>}
-            <span
-              className={cn(
-                isLast ? 'font-medium text-foreground' : 'text-muted-foreground',
-              )}
-            >
+            <span className={cn(isLast ? 'font-medium text-foreground' : 'text-muted-foreground')}>
               {label}
             </span>
           </span>
@@ -47,6 +43,7 @@ function Breadcrumbs() {
 
 export function Topbar({ user }: { user: SessionUser }) {
   const router = useRouter()
+  const { theme, toggle } = useTheme()
 
   async function handleLogout() {
     try {
@@ -73,8 +70,19 @@ export function Topbar({ user }: { user: SessionUser }) {
           </span>
         </div>
 
+        {/* Theme toggle */}
+        <button
+          type="button"
+          onClick={toggle}
+          title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+
         {/* Logout */}
         <button
+          type="button"
           onClick={handleLogout}
           title="Cerrar sesión"
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"

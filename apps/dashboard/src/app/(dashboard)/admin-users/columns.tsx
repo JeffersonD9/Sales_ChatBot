@@ -1,20 +1,20 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
 import { formatDate } from '@/lib/utils'
 import type { AdminUserRow } from '@/queries/admin-users'
+import type { ColumnDef } from '@tanstack/react-table'
 import { UserRowActions } from './_components/user-row-actions'
 
 const ROLE_LABELS: Record<string, string> = {
   superadmin: 'Superadmin',
-  admin:      'Admin',
-  viewer:     'Viewer',
+  admin: 'Admin',
+  viewer: 'Viewer',
 }
 
 const ROLE_CLASSES: Record<string, string> = {
   superadmin: 'bg-purple-500/15 text-purple-600 dark:text-purple-400',
-  admin:      'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-  viewer:     'bg-muted text-muted-foreground',
+  admin: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
+  viewer: 'bg-muted text-muted-foreground',
 }
 
 export const columns: ColumnDef<AdminUserRow>[] = [

@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
-import { revokeCurrentSession, clearCookieOptions } from '@/lib/auth'
+import { clearCookieOptions, revokeCurrentSession } from '@/lib/auth'
 import { SESSION_COOKIE } from '@/lib/constants'
+import { NextResponse } from 'next/server'
 
 export async function POST() {
   await revokeCurrentSession('logout')

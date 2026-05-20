@@ -1,5 +1,5 @@
-import { type NextRequest, NextResponse } from 'next/server'
 import { SESSION_COOKIE } from '@/lib/constants'
+import { type NextRequest, NextResponse } from 'next/server'
 
 // Importamos solo desde constants.ts (sin imports Node.js) — compatible con Edge runtime.
 
@@ -7,14 +7,16 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // ── IP whitelist (opcional) ───────────────────────────────────────────────
-  const allowedIps = process.env.ALLOWED_IPS?.split(',')
-    .map((ip) => ip.trim())
-    .filter(Boolean) ?? []
+  const allowedIps =
+    process.env.ALLOWED_IPS?.split(',')
+      .map((ip) => ip.trim())
+      .filter(Boolean) ?? []
 
   if (allowedIps.length > 0) {
-    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-      ?? request.headers.get('x-real-ip')
-      ?? ''
+    const clientIp =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      request.headers.get('x-real-ip') ??
+      ''
     if (!allowedIps.includes(clientIp)) {
       return new NextResponse('Acceso denegado', { status: 403 })
     }

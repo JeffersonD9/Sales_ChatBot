@@ -31,7 +31,10 @@
       "**/tests/**/*.test.js"
     ],
     "clearMocks": true,
-    "verbose": true
+    "verbose": true,
+    "modulePathIgnorePatterns": [
+      "<rootDir>/apps/dashboard/.next/"
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import { useEffect } from 'react'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -45,8 +45,11 @@ export function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div
+      <button
+        type="button"
+        aria-label="Cerrar diálogo"
         className="absolute inset-0 bg-black/50"
+        disabled={loading}
         onClick={() => !loading && onOpenChange(false)}
       />
 
@@ -57,6 +60,7 @@ export function ConfirmDialog({
 
         <div className="mt-6 flex justify-end gap-3">
           <button
+            type="button"
             onClick={() => onOpenChange(false)}
             disabled={loading}
             className="h-9 rounded-md border border-input px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
@@ -64,6 +68,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={loading}
             className={cn(

@@ -56,11 +56,16 @@ const mockSuccess = (text = 'Hola, con gusto te ayudo.') => {
 beforeEach(() => {
   _resetClientForTest();
   mockCreate.mockReset();
+  global.fetch = jest.fn();
   process.env.AI_ENABLED      = 'true';
+  process.env.AI_PROVIDER = 'anthropic';
   process.env.ANTHROPIC_API_KEY = 'sk-test-key';
 });
 
 afterEach(() => {
+  delete global.fetch;
+  delete process.env.AI_PROVIDER;
+  delete process.env.GEMINI_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.AI_ENABLED;
 });
@@ -153,7 +158,39 @@ describe('handleWithAI', () => {
       const session    = makeSession();
       await handleWithAI('573001', textoLargo, session, tenant);
       const userEntry = session.data.aiHistory.find((m) => m.role === 'user');
-      expect(userEntry.content.length).toBeLessThanOrEqual(501); // 500 + '…'
+      expect(userEntry.content.length).toBeLessThanOrEqual(503); // 500 + '...'
+    });
+  });
+
+  describe('proveedor Gemini', () => {
+    test('usa Gemini por defecto y retorna el texto generado', async () => {
+      delete process.env.AI_PROVIDER;
+      delete process.env.ANTHROPIC_API_KEY;
+      process.env.GEMINI_API_KEY = 'gemini-test-key';
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: 'Tenemos blusas disponibles.' }] } }],
+          usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 8 },
+        }),
+      });
+
+      const result = await handleWithAI('573001', 'hola', makeSession(), tenant);
+
+      expect(result).toBe('Tenemos blusas disponibles.');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch.mock.calls[0][0]).toContain('gemini-2.5-flash-lite:generateContent');
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    test('retorna null cuando Gemini no tiene API key', async () => {
+      delete process.env.AI_PROVIDER;
+      delete process.env.ANTHROPIC_API_KEY;
+
+      const result = await handleWithAI('573001', 'hola', makeSession(), tenant);
+
+      expect(result).toBeNull();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 

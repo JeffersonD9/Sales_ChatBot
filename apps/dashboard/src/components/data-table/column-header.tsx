@@ -1,8 +1,8 @@
 'use client'
 
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
-import type { Column } from '@tanstack/react-table'
 import { cn } from '@/lib/utils'
+import type { Column } from '@tanstack/react-table'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 
 interface ColumnHeaderProps<TData, TValue> {
   column: Column<TData, TValue>
@@ -21,6 +21,7 @@ export function DataTableColumnHeader<TData, TValue>({
 
   return (
     <button
+      type="button"
       onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
       className={cn(
         'flex items-center gap-1 text-xs font-medium -ml-1 px-1 py-0.5 rounded',

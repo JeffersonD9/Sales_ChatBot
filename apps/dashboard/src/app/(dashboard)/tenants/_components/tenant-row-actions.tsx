@@ -1,21 +1,39 @@
 'use client'
 
-import { Ban, CheckCircle, Eye, MoreHorizontal, Pencil } from 'lucide-react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import type { TenantRow } from '@/queries/tenants'
+import { Ban, CheckCircle, Eye, MoreHorizontal } from 'lucide-react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 export function TenantRowActions({ tenant }: { tenant: TenantRow }) {
   const router = useRouter()
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const isSuspended = tenant.status === 'suspended'
   const targetStatus = isSuspended ? 'active' : 'suspended'
+
+  function openMenu() {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    }
+    setMenuOpen(true)
+  }
+
+  // Cierra al hacer scroll (el menú fixed quedaría desincronizado)
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = () => setMenuOpen(false)
+    window.addEventListener('scroll', close, true)
+    return () => window.removeEventListener('scroll', close, true)
+  }, [menuOpen])
 
   async function handleStatusChange() {
     setLoading(true)
@@ -40,9 +58,11 @@ export function TenantRowActions({ tenant }: { tenant: TenantRow }) {
 
   return (
     <>
-      <div className="relative flex justify-end">
+      <div className="flex justify-end">
         <button
-          onClick={() => setMenuOpen((v) => !v)}
+          type="button"
+          ref={buttonRef}
+          onClick={openMenu}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -50,31 +70,32 @@ export function TenantRowActions({ tenant }: { tenant: TenantRow }) {
 
         {menuOpen && (
           <>
-            {/* Cierra el menú al clickear fuera */}
-            <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+            {/* Backdrop — cierra al clickear fuera */}
+            <button
+              type="button"
+              aria-label="Cerrar menú"
+              className="fixed inset-0 z-40"
+              onClick={() => setMenuOpen(false)}
+            />
 
-            <div className="absolute right-0 top-9 z-20 w-44 rounded-md border border-border bg-background py-1 shadow-lg">
+            {/* Dropdown fixed para escapar overflow:hidden de la tabla */}
+            <div
+              className="fixed z-50 w-44 rounded-md border border-border bg-background py-1 shadow-lg"
+              style={{ top: menuPos.top, right: menuPos.right }}
+            >
               <Link
                 href={`/tenants/${tenant.slug}`}
                 onClick={() => setMenuOpen(false)}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm transition-colors hover:bg-accent"
               >
                 <Eye className="h-3.5 w-3.5" />
-                Ver detalle
-              </Link>
-
-              <Link
-                href={`/tenants/${tenant.slug}?edit=1`}
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm transition-colors hover:bg-accent"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Editar
+                Gestionar
               </Link>
 
               <div className="my-1 h-px bg-border" />
 
               <button
+                type="button"
                 onClick={() => {
                   setMenuOpen(false)
                   setConfirmOpen(true)

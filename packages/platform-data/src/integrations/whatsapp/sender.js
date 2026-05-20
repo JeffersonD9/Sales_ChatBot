@@ -11,6 +11,7 @@
 
 const axios      = require('axios');
 const { logger } = require('@whatsapp-saas/logger');
+const antiBanGuard = require('./antiBanGuard');
 
 const META_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
 const D360_BASE_URL = process.env.D360_BASE_URL || 'https://waba-v2.360dialog.io';
@@ -61,7 +62,8 @@ function tokenForProvider(tenant, provider) {
 function requestForProvider(phone, payload, tenant) {
   const provider = getProvider(tenant);
   const token = tokenForProvider(tenant, provider);
-  const body = { messaging_product: 'whatsapp', to: phone, ...payload };
+  const { _antiBanBypass, ...publicPayload } = payload;
+  const body = { messaging_product: 'whatsapp', to: phone, ...publicPayload };
 
   if (provider === '360dialog') {
     return {
@@ -95,19 +97,25 @@ async function _callWhatsApp(phone, payload, tenant) {
     throw new Error(`Falta token/API key para proveedor WhatsApp ${request.provider}`);
   }
 
+  const guard = await antiBanGuard.beforeSend(phone, payload, tenant);
+  if (!guard.allowed) {
+    return { skipped: true, reason: guard.reason };
+  }
+
   try {
     const res = await axios.post(request.url, request.body, { headers: request.headers });
-    return res.data;
+    return antiBanGuard.afterSend(phone, payload, tenant, res.data);
   } catch (err) {
+    await antiBanGuard.handleApiError(err, tenant, phone);
     const detail = err.response?.data || err.message;
     logger.error({ tenantSlug: tenant.slug, phone, provider: request.provider, detail }, '[Sender] Error WhatsApp API');
     throw err;
   }
 }
 
-async function sendText(phone, text, tenant) {
+async function sendText(phone, text, tenant, options = {}) {
   if (isDemoMode(tenant)) { collectDemo({ type: 'text', content: text }); return; }
-  return _callWhatsApp(phone, { type: 'text', text: { body: text, preview_url: false } }, tenant);
+  return _callWhatsApp(phone, { type: 'text', text: { body: text, preview_url: false }, _antiBanBypass: options.antiBanBypass === true }, tenant);
 }
 
 async function sendImage(phone, imageUrl, caption = '', tenant) {

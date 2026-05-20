@@ -1,28 +1,25 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
-import Link from 'next/link'
 import { DataTableColumnHeader } from '@/components/data-table/column-header'
+import { CopyButton } from '@/components/shared/copy-button'
 import { formatRelativeTime } from '@/lib/utils'
 import type { SessionRow } from '@/queries/sessions'
+import type { ColumnDef } from '@tanstack/react-table'
+import Link from 'next/link'
 
 export const columns: ColumnDef<SessionRow>[] = [
   {
     accessorKey: 'wa_from',
     header: 'Teléfono',
     cell: ({ row }) => {
-      const { tenant_slug, wa_from, customer_name } = row.original
+      const { wa_from, customer_name } = row.original
       return (
-        <div>
-          <Link
-            href={`/sessions/${tenant_slug}/${encodeURIComponent(wa_from)}`}
-            className="font-mono text-sm text-primary hover:underline"
-          >
-            {wa_from}
-          </Link>
-          {customer_name && (
-            <p className="text-xs text-muted-foreground">{customer_name}</p>
-          )}
+        <div className="flex items-center gap-1.5">
+          <div>
+            <span className="font-mono text-sm text-foreground">{wa_from}</span>
+            {customer_name && <p className="text-xs text-muted-foreground">{customer_name}</p>}
+          </div>
+          <CopyButton value={wa_from} />
         </div>
       )
     },

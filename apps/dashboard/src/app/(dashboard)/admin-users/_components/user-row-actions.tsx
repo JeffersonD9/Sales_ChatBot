@@ -1,26 +1,26 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import type { AdminUserRow } from '@/queries/admin-users'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { toast } from 'sonner'
 
 export function UserRowActions({ user }: { user: AdminUserRow }) {
   const router = useRouter()
-  const [open, setOpen]       = useState(false)
+  const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const action    = user.is_active ? 'desactivar' : 'activar'
+  const action = user.is_active ? 'desactivar' : 'activar'
   const nextState = !user.is_active
 
   async function handleConfirm() {
     setLoading(true)
     try {
       const res = await fetch(`/api/admin/users/${user.id}`, {
-        method:  'PATCH',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ is_active: nextState }),
+        body: JSON.stringify({ is_active: nextState }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -38,6 +38,7 @@ export function UserRowActions({ user }: { user: AdminUserRow }) {
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
           user.is_active
