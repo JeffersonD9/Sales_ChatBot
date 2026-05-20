@@ -30,6 +30,8 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Script de creación de admins en prod (usa pg + @node-rs/argon2 ya bundleados).
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/create-admin-prod.cjs ./scripts/create-admin-prod.cjs
 
 USER nextjs
 
