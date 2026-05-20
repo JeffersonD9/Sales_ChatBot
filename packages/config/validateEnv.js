@@ -79,10 +79,12 @@ function validateEnv() {
     requireRealSecret('ADMIN_API_KEY', { min: 32 });
     requireRealSecret('JWT_SECRET', { min: 32 });
 
-    if (aiProvider === 'gemini') {
-      requireRealSecret('GEMINI_API_KEY', { min: 16 });
-    } else if (aiProvider === 'anthropic') {
-      requireRealSecret('ANTHROPIC_API_KEY', { min: 16 });
+    if (aiEnabled) {
+      if (aiProvider === 'gemini') {
+        requireRealSecret('GEMINI_API_KEY', { min: 16 });
+      } else if (aiProvider === 'anthropic') {
+        requireRealSecret('ANTHROPIC_API_KEY', { min: 16 });
+      }
     }
   }
 
