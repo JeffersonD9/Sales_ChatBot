@@ -1,6 +1,6 @@
-# Development overlay.
+﻿# Development overlay.
 #
-# Usage (desde la raíz del proyecto):
+# Usage (desde la raÃ­z del proyecto):
 #   docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml up
 #   docker compose -f docker-compose.yml -f infra/compose/docker-compose.dev.yml --profile ai up
 #
@@ -13,6 +13,53 @@
 # se resuelven desde el archivo base.
 
 services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: whatsapp-saas-postgres-dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      PLATFORM_DB_NAME: ${PLATFORM_DB_NAME:-platform}
+      TENANT_DB_NAME_DEFAULT: ${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/bootstrap.sh:/docker-entrypoint-initdb.d/00-bootstrap.sh:ro
+      - ./infra/postgres/init.sql:/bootstrap/init.sql:ro
+      - ./infra/postgres/tenant-init.sql:/bootstrap/tenant-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U \"${POSTGRES_USER:-app}\" -d \"${PLATFORM_DB_NAME:-platform}\" -c \"SELECT 1 FROM tenants LIMIT 1\" > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    networks:
+      - internal
+
+  # Crea el usuario admin del dashboard en primer arranque. Se detiene solo.
+  # Hash Argon2id de "Admin123456!" (m=65536, t=3, p=1, len=32) â€” ver infra/postgres/admin-seed.sql
+  admin-seed:
+    image: postgres:16-alpine
+    container_name: whatsapp-saas-admin-seed
+    restart: "no"
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-devpassword}
+      PGUSER: ${POSTGRES_USER:-app}
+      PGDATABASE: ${PLATFORM_DB_NAME:-platform}
+      PGHOST: postgres
+    volumes:
+      - ./infra/postgres/admin-seed.sql:/seed.sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    command: ["sh", "-c", "psql -f /seed.sql && echo 'âœ… Admin listo: admin / Admin123456!'"]
 
   redis:
     image: redis:7.4-alpine
@@ -45,7 +92,7 @@ services:
     build:
       context: .
       target: dev
-    image: jestsolution.dev/whatsapp-saas:dev
+    image: jestsolution.tech/whatsapp-saas:dev
     container_name: whatsapp-saas-api-dev
     restart: unless-stopped
     command: ["npm", "run", "dev:api"]
@@ -56,9 +103,13 @@ services:
       NODE_ENV: development
       API_PORT: "3000"
       HEALTHCHECK_PORT: "3000"
+      PLATFORM_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${PLATFORM_DB_NAME:-platform}
+      TENANT_DATABASE_URL_DEFAULT: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.HEALTHCHECK_PORT+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
@@ -73,7 +124,7 @@ services:
       - internal
 
   whatsapp:
-    image: jestsolution.dev/whatsapp-saas:dev
+    image: jestsolution.tech/whatsapp-saas:dev
     container_name: whatsapp-saas-whatsapp-dev
     restart: unless-stopped
     command: ["npm", "run", "dev:whatsapp"]
@@ -85,9 +136,13 @@ services:
       WHATSAPP_PORT: "3001"
       HEALTHCHECK_PORT: "3001"
       QUEUE_MODE: bullmq
+      PLATFORM_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${PLATFORM_DB_NAME:-platform}
+      TENANT_DATABASE_URL_DEFAULT: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.HEALTHCHECK_PORT+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
@@ -102,7 +157,7 @@ services:
       - internal
 
   worker:
-    image: jestsolution.dev/whatsapp-saas:dev
+    image: jestsolution.tech/whatsapp-saas:dev
     container_name: whatsapp-saas-worker-dev
     restart: unless-stopped
     command: ["npm", "run", "dev:worker"]
@@ -110,9 +165,13 @@ services:
     environment:
       NODE_ENV: development
       QUEUE_MODE: bullmq
+      PLATFORM_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${PLATFORM_DB_NAME:-platform}
+      TENANT_DATABASE_URL_DEFAULT: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const r=new(require('ioredis'))(process.env.REDIS_URL||'redis://localhost:6379',{connectTimeout:3000,maxRetriesPerRequest:1,enableReadyCheck:false});r.ping().then(()=>{r.disconnect();process.exit(0)}).catch(()=>process.exit(1))\""]
@@ -127,7 +186,7 @@ services:
       - internal
 
   ai-worker:
-    image: jestsolution.dev/whatsapp-saas:dev
+    image: jestsolution.tech/whatsapp-saas:dev
     container_name: whatsapp-saas-ai-worker-dev
     restart: unless-stopped
     command: ["npm", "run", "dev:ai-worker"]
@@ -153,12 +212,12 @@ services:
     networks:
       - internal
 
-  # Panel admin dev — levantar con: --profile dashboard
+  # Panel admin dev â€” levantar con: --profile dashboard
   dashboard:
     build:
       context: ./apps/dashboard
       dockerfile: Dockerfile
-    image: jestsolution.dev/dashboard:dev
+    image: jestsolution.tech/dashboard:dev
     container_name: jestsolution-dashboard-dev
     restart: unless-stopped
     ports:
@@ -166,16 +225,20 @@ services:
     env_file: .env
     environment:
       NODE_ENV: development
-      PORT: 3001
+      PORT: "3001"
       NEXT_PUBLIC_APP_URL: http://localhost:3002
-      DATABASE_URL: ${PLATFORM_DATABASE_URL}
-      TENANT_DATABASE_URL: ${TENANT_DATABASE_URL_DEFAULT}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${PLATFORM_DB_NAME:-platform}
+      TENANT_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
       AUTH_SECRET: ${DASHBOARD_AUTH_SECRET:-dev-secret-change-in-production-min32chars}
       SESSION_TTL_SECONDS: "28800"
       PANEL_DOMAIN: localhost
       BOT_DOMAIN: localhost
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     profiles:
       - dashboard
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -191,3 +254,4 @@ networks:
 
 volumes:
   redis_data:
+  postgres_data:

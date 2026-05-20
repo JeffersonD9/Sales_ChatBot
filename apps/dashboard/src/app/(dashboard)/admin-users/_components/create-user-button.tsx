@@ -1,22 +1,22 @@
-'use client'
+﻿'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { toast } from 'sonner'
 import { UserPlus, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { toast } from 'sonner'
+import { z } from 'zod'
 
 const schema = z.object({
   username: z
     .string()
-    .min(3, 'Mínimo 3 caracteres')
+    .min(3, 'MÃ­nimo 3 caracteres')
     .max(64)
-    .regex(/^[a-z0-9_-]+$/, 'Solo minúsculas, números, _ y -'),
-  email:    z.string().email('Email inválido'),
-  password: z.string().min(8, 'Mínimo 8 caracteres').max(128),
-  role:     z.enum(['superadmin', 'admin', 'viewer']),
+    .regex(/^[a-z0-9_-]+$/, 'Solo minÃºsculas, nÃºmeros, _ y -'),
+  email: z.string().email('Email invÃ¡lido'),
+  password: z.string().min(8, 'MÃ­nimo 8 caracteres').max(128),
+  role: z.enum(['superadmin', 'admin', 'viewer']),
 })
 
 type FormData = z.infer<typeof schema>
@@ -50,9 +50,9 @@ export function CreateUserButton() {
   async function onSubmit(data: FormData) {
     try {
       const res = await fetch('/api/admin/users', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(data),
+        body: JSON.stringify(data),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -64,13 +64,14 @@ export function CreateUserButton() {
       setOpen(false)
       router.refresh()
     } catch {
-      toast.error('Error de conexión')
+      toast.error('Error de conexiÃ³n')
     }
   }
 
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
       >
@@ -80,14 +81,18 @@ export function CreateUserButton() {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
+          <button
+            type="button"
+            aria-label="Cerrar modal"
             className="absolute inset-0 bg-black/50"
+            disabled={isSubmitting}
             onClick={() => !isSubmitting && setOpen(false)}
           />
           <div className="relative z-10 w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-xl">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-base font-semibold text-foreground">Nuevo usuario admin</h2>
               <button
+                type="button"
                 onClick={() => setOpen(false)}
                 disabled={isSubmitting}
                 className="rounded-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
@@ -110,25 +115,25 @@ export function CreateUserButton() {
                 <input
                   {...register('email')}
                   type="email"
-                  placeholder="maria@jestsolution.dev"
+                  placeholder="maria@jestsolution.tech"
                   className={INPUT}
                 />
               </Field>
 
-              <Field label="Contraseña" error={errors.password?.message}>
+              <Field label="ContraseÃ±a" error={errors.password?.message}>
                 <input
                   {...register('password')}
                   type="password"
-                  placeholder="Mínimo 8 caracteres"
+                  placeholder="MÃ­nimo 8 caracteres"
                   className={INPUT}
                 />
               </Field>
 
               <Field label="Rol" error={errors.role?.message}>
                 <select {...register('role')} className={INPUT}>
-                  <option value="viewer">Viewer — solo lectura</option>
-                  <option value="admin">Admin — gestión de tenants y órdenes</option>
-                  <option value="superadmin">Superadmin — acceso total</option>
+                  <option value="viewer">Viewer â€” solo lectura</option>
+                  <option value="admin">Admin â€” gestiÃ³n de tenants y Ã³rdenes</option>
+                  <option value="superadmin">Superadmin â€” acceso total</option>
                 </select>
               </Field>
 
@@ -146,7 +151,7 @@ export function CreateUserButton() {
                   disabled={isSubmitting}
                   className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Creando…' : 'Crear usuario'}
+                  {isSubmitting ? 'Creandoâ€¦' : 'Crear usuario'}
                 </button>
               </div>
             </form>
@@ -162,13 +167,13 @@ function Field({
   children,
   error,
 }: {
-  label:    string
+  label: string
   children: React.ReactNode
-  error?:   string
+  error?: string
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium text-foreground">{label}</label>
+      <div className="text-sm font-medium text-foreground">{label}</div>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>

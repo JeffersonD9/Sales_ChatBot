@@ -44,8 +44,8 @@ Crear dos registros A apuntando a la IP de la VPS:
 Esperar propagación (normalmente < 30 min). Verificar:
 
 ```bash
-dig jestsolution.dev +short
-dig admin.jestsolution.dev +short
+dig jestsolution.tech +short
+dig admin.jestsolution.tech +short
 ```
 
 ---
@@ -79,11 +79,21 @@ ADMIN_API_KEY=<genera: openssl rand -hex 32>
 JWT_SECRET=<genera: openssl rand -hex 32>
 
 # ── IA ───────────────────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY=sk-ant-...
+AI_ENABLED=true
+AI_PROVIDER=gemini
+GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_API_KEY=<de Google AI Studio>
+AI_QUEUE_MODE=direct
+# Alternativa compatible:
+# AI_PROVIDER=anthropic
+# ANTHROPIC_API_KEY=sk-ant-...
+
+# Schedulers premium
+ENABLE_PREMIUM_SCHEDULER=false
 
 # ── Dominios ─────────────────────────────────────────────────────────────────
-DOMAIN=jestsolution.dev
-ADMIN_DOMAIN=admin.jestsolution.dev
+DOMAIN=jestsolution.tech
+ADMIN_DOMAIN=admin.jestsolution.tech
 CERTBOT_EMAIL=jeffersonm0915@gmail.com
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -116,14 +126,14 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
 # Paso 5b — certificado para el dominio del bot
 certbot certonly --webroot \
   -w ./certbot/www \
-  -d jestsolution.dev \
+  -d jestsolution.tech \
   --email jeffersonm0915@gmail.com \
   --agree-tos --non-interactive
 
 # Paso 5c — certificado para el panel admin
 certbot certonly --webroot \
   -w ./certbot/www \
-  -d admin.jestsolution.dev \
+  -d admin.jestsolution.tech \
   --email jeffersonm0915@gmail.com \
   --agree-tos --non-interactive
 
@@ -181,6 +191,7 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
   --profile dashboard up -d --build
 
 # Bot + panel admin + AI worker
+# Requiere AI_QUEUE_MODE=bullmq en .env para que el worker envie solicitudes a la cola AI.
 docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
   --profile dashboard --profile ai up -d --build
 
@@ -228,13 +239,13 @@ DATABASE_URL="postgresql://app:<DB_PASSWORD>@localhost:5432/platform" \
 
 ```bash
 # Bot API
-curl https://jestsolution.dev/health
+curl https://jestsolution.tech/health
 
 # Panel admin
-curl https://admin.jestsolution.dev/api/health
+curl https://admin.jestsolution.tech/api/health
 
 # Webhook (handshake Meta)
-curl "https://jestsolution.dev/webhook/<slug>?hub.mode=subscribe&hub.verify_token=<token>&hub.challenge=test"
+curl "https://jestsolution.tech/webhook/<slug>?hub.mode=subscribe&hub.verify_token=<token>&hub.challenge=test"
 ```
 
 ---
@@ -315,8 +326,8 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
 **nginx no arranca — cert no encontrado:**
 ```bash
 # Verificar que existen los certs
-ls -la certbot/conf/live/jestsolution.dev/
-ls -la certbot/conf/live/admin.jestsolution.dev/
+ls -la certbot/conf/live/jestsolution.tech/
+ls -la certbot/conf/live/admin.jestsolution.tech/
 # Si no existen, repetir paso 5
 ```
 

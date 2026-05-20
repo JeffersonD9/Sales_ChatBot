@@ -1,33 +1,40 @@
-import { z } from 'zod'
+﻿import { z } from 'zod'
 
 const schema = z.object({
-  NODE_ENV:            z.enum(['development', 'production', 'test']).default('development'),
-  PORT:                z.coerce.number().default(3001),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.coerce.number().default(3001),
 
-  NEXT_PUBLIC_APP_URL: z.string().url('NEXT_PUBLIC_APP_URL debe ser una URL válida'),
+  NEXT_PUBLIC_APP_URL: z.string().url('NEXT_PUBLIC_APP_URL debe ser una URL vÃ¡lida'),
 
-  DATABASE_URL:        z.string().min(10, 'DATABASE_URL es requerido'),
+  DATABASE_URL: z.string().min(10, 'DATABASE_URL es requerido'),
   TENANT_DATABASE_URL: z.string().min(10, 'TENANT_DATABASE_URL es requerido'),
 
-  AUTH_SECRET:         z.string().min(32, 'AUTH_SECRET debe tener al menos 32 caracteres — generá uno con: openssl rand -hex 32'),
+  AUTH_SECRET: z
+    .string()
+    .min(
+      32,
+      'AUTH_SECRET debe tener al menos 32 caracteres â€” generÃ¡ uno con: openssl rand -hex 32',
+    ),
   SESSION_TTL_SECONDS: z.coerce.number().positive().default(28800),
 
-  ALLOWED_IPS:         z.string().default(''),
+  ALLOWED_IPS: z.string().default(''),
 
-  PANEL_DOMAIN:        z.string().default('admin.jestsolution.dev'),
-  BOT_DOMAIN:          z.string().default('bot.jestsolution.dev'),
+  PANEL_DOMAIN: z.string().default('admin.jestsolution.tech'),
+  BOT_DOMAIN: z.string().default('bot.jestsolution.tech'),
+
+  REDIS_URL: z.string().url().optional(),
 })
 
 // Durante `next build` en Docker se setea SKIP_ENV_VALIDATION=1 porque las
 // variables reales se inyectan en runtime (no en la imagen).
-// En producción (runtime), la validación corre completa y falla rápido si falta algo.
+// En producciÃ³n (runtime), la validaciÃ³n corre completa y falla rÃ¡pido si falta algo.
 function validate() {
   const parsed = schema.safeParse(process.env)
   if (!parsed.success) {
     const lines = Object.entries(parsed.error.flatten().fieldErrors)
-      .map(([field, errors]) => `  • ${field}: ${errors?.join(', ')}`)
+      .map(([field, errors]) => `  â€¢ ${field}: ${errors?.join(', ')}`)
       .join('\n')
-    throw new Error(`\n❌ Variables de entorno inválidas o faltantes:\n${lines}\n`)
+    throw new Error(`\nâŒ Variables de entorno invÃ¡lidas o faltantes:\n${lines}\n`)
   }
   return parsed.data
 }

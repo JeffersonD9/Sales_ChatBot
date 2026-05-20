@@ -1,5 +1,5 @@
 # Panel admin — OPCIONAL.
-# Variable requerida: ADMIN_DOMAIN (ej: admin.jestsolution.dev)
+# Variable requerida: ADMIN_DOMAIN (ej: admin.jestsolution.tech)
 #
 # Para desacoplar el panel de esta infraestructura:
 #   1. Eliminar este archivo del build de la imagen nginx

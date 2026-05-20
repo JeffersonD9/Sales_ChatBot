@@ -18,10 +18,12 @@ services:
     image: postgres:16-alpine
     container_name: whatsapp-saas-postgres
     restart: unless-stopped
-    cpus: "1.00"
+    cpus: "0.80"
     mem_limit: 1536m
     mem_reservation: 512m
     pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
     env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-app}
@@ -52,10 +54,12 @@ services:
     image: redis:7.4-alpine
     container_name: whatsapp-saas-redis
     restart: unless-stopped
-    cpus: "0.50"
+    cpus: "0.30"
     mem_limit: 640m
     mem_reservation: 256m
     pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
     env_file: .env
     command:
       - /bin/sh
@@ -86,13 +90,20 @@ services:
     build:
       context: .
       target: runner
-    image: jestsolution.dev/whatsapp-saas:prod
+    image: jestsolution.tech/whatsapp-saas:prod
     container_name: whatsapp-saas-api
     restart: unless-stopped
-    cpus: "0.50"
+    cpus: "0.30"
     mem_limit: 384m
     mem_reservation: 192m
     pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["node", "apps/api-core/server.js"]
     env_file: .env
     environment:
@@ -125,13 +136,20 @@ services:
         max-file: "3"
 
   whatsapp:
-    image: jestsolution.dev/whatsapp-saas:prod
+    image: jestsolution.tech/whatsapp-saas:prod
     container_name: whatsapp-saas-whatsapp
     restart: unless-stopped
     cpus: "0.50"
     mem_limit: 384m
     mem_reservation: 192m
     pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["node", "apps/wa-session-manager/server.js"]
     env_file: .env
     environment:
@@ -165,13 +183,20 @@ services:
         max-file: "3"
 
   worker:
-    image: jestsolution.dev/whatsapp-saas:prod
+    image: jestsolution.tech/whatsapp-saas:prod
     container_name: whatsapp-saas-worker
     restart: unless-stopped
-    cpus: "1.00"
+    cpus: "0.80"
     mem_limit: 512m
     mem_reservation: 256m
     pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["node", "apps/message-worker/index.js"]
     env_file: .env
     environment:
@@ -204,13 +229,20 @@ services:
         max-file: "3"
 
   ai-worker:
-    image: jestsolution.dev/whatsapp-saas:prod
+    image: jestsolution.tech/whatsapp-saas:prod
     container_name: whatsapp-saas-ai-worker
     restart: unless-stopped
-    cpus: "1.00"
+    cpus: "0.80"
     mem_limit: 768m
     mem_reservation: 384m
     pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["node", "apps/ai-orchestrator/index.js"]
     env_file: .env
     environment:
@@ -245,13 +277,15 @@ services:
   nginx:
     build:
       context: ./infra/nginx
-    image: jestsolution.dev/whatsapp-saas-nginx:prod
+    image: jestsolution.tech/whatsapp-saas-nginx:prod
     container_name: whatsapp-saas-nginx
     restart: unless-stopped
-    cpus: "0.25"
+    cpus: "0.20"
     mem_limit: 128m
     mem_reservation: 64m
     pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
     env_file: .env
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
@@ -316,13 +350,15 @@ services:
     build:
       context: ./apps/dashboard
       dockerfile: Dockerfile
-    image: jestsolution.dev/dashboard:prod
+    image: jestsolution.tech/dashboard:prod
     container_name: jestsolution-dashboard
     restart: unless-stopped
-    cpus: "0.50"
+    cpus: "0.30"
     mem_limit: 384m
     mem_reservation: 128m
     pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
     env_file: .env
     environment:
       NODE_ENV: production
@@ -335,10 +371,13 @@ services:
       ALLOWED_IPS: ${DASHBOARD_ALLOWED_IPS:-}
       PANEL_DOMAIN: ${ADMIN_DOMAIN}
       BOT_DOMAIN: ${DOMAIN}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     profiles:
       - dashboard
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health >/dev/null 2>&1 || exit 1"]

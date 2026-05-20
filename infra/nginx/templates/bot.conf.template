@@ -1,5 +1,5 @@
 # Bot routes — siempre activo.
-# Variable requerida: DOMAIN (ej: jestsolution.dev)
+# Variable requerida: DOMAIN (ej: jestsolution.tech)
 
 server {
   listen 80;

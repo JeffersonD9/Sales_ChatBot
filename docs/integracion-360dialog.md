@@ -1,4 +1,4 @@
-# Integracion 360dialog
+﻿# Integracion 360dialog
 
 Plan B para operar WhatsApp Business API mediante 360dialog mientras el portafolio de Meta no esta verificado.
 
@@ -45,7 +45,7 @@ https://TU_DOMINIO/webhook/{slug}
 Ejemplo:
 
 ```text
-https://jestsolution.dev/webhook/cliente-demo
+https://jestsolution.tech/webhook/cliente-demo
 ```
 
 El servicio ya responde `200 OK` antes de procesar y encola el payload en `whatsapp.inbound`, que es el comportamiento recomendado para evitar reintentos por latencia.

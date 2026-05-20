@@ -1,4 +1,4 @@
-# Docker topology
+﻿# Docker topology
 
 La fase actual corre el runtime por boundaries separados. El modo monolitico ya no forma parte de Docker ni de los scripts npm operativos.
 
@@ -116,7 +116,7 @@ La imagen usa `api` como CMD por defecto. Los servicios separados sobreescriben 
 - `worker`: `apps/message-worker/index.js`.
 - `ai-worker`: `apps/ai-orchestrator/index.js`.
 
-Nginx usa una imagen separada `jestsolution.dev/whatsapp-saas-nginx:prod`, construida desde `infra/nginx`, para mantener proxy, TLS y templates fuera de la imagen Node.
+Nginx usa una imagen separada `jestsolution.tech/whatsapp-saas-nginx:prod`, construida desde `infra/nginx`, para mantener proxy, TLS y templates fuera de la imagen Node.
 
 Los entrypoints HTTP separados exportan funciones de ciclo de vida (`startServer()`/`shutdown()`) y no arrancan listeners bajo `NODE_ENV=test`, de modo que los smokes de importacion no abren puertos ni compiten entre servicios.
 

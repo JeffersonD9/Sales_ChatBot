@@ -1,4 +1,4 @@
-/**
+﻿/**
  * scripts/create-tenant.js - CLI productivo para crear tenants.
  *
  * Uso:
@@ -321,7 +321,7 @@ async function main() {
     console.log(`   DB name:     ${provisioning.databaseName || '(shared/default)'}`);
     console.log(`   Schema:      ${provisioning.schemaName}`);
     console.log(`   Verify token: ${verifyToken}`);
-    console.log(`\n   Webhook: https://jestsolution.dev/webhook/${tenant.slug}`);
+    console.log(`\n   Webhook: https://jestsolution.tech/webhook/${tenant.slug}`);
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.code === '23505') {
