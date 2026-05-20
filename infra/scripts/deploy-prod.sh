@@ -110,6 +110,11 @@ CERTBOT_EMAIL=$(grep -E '^CERTBOT_EMAIL=' .env | head -1 | cut -d= -f2-)
 [ -n "$CERTBOT_EMAIL" ] || die "CERTBOT_EMAIL no definido en .env"
 log "DOMAIN=$DOMAIN  ADMIN_DOMAIN=${ADMIN_DOMAIN:-<none>}  EMAIL=$CERTBOT_EMAIL"
 
+# ─── 2.5. Build de imágenes (idempotente; usa cache si nada cambió) ────────
+log "Build de imágenes (api/whatsapp/worker/nginx/dashboard)…"
+docker compose "${COMPOSE_FILES[@]}" "${PROFILE_DASHBOARD[@]}" build api nginx dashboard
+ok "Build completado"
+
 # ─── 3. Postgres + Redis ────────────────────────────────────────────────────
 log "Levantando postgres + redis…"
 docker compose "${COMPOSE_FILES[@]}" "${PROFILE_DASHBOARD[@]}" up -d postgres redis
