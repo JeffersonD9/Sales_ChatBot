@@ -1,10 +1,483 @@
-name: Deploy
+name: CI/CD Deploy
 
 on:
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
+    inputs:
+      target:
+        description: Area to deploy
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - dashboard
+          - app
+          - nginx
+          - all
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
 
 jobs:
-  placeholder:
+  detect:
+    name: Detect changes
     runs-on: ubuntu-latest
+
+    outputs:
+      app_changed: ${{ steps.detect.outputs.app_changed }}
+      dashboard_changed: ${{ steps.detect.outputs.dashboard_changed }}
+      nginx_changed: ${{ steps.detect.outputs.nginx_changed }}
+      compose_changed: ${{ steps.detect.outputs.compose_changed }}
+      any_changed: ${{ steps.detect.outputs.any_changed }}
+
     steps:
-      - run: echo "Deploy workflow pending implementation"
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed areas
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET: ${{ github.event.inputs.target || 'auto' }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          app_changed=false
+          dashboard_changed=false
+          nginx_changed=false
+          compose_changed=false
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET" != "auto" ]; then
+            case "$TARGET" in
+              app)
+                app_changed=true
+                ;;
+              dashboard)
+                dashboard_changed=true
+                ;;
+              nginx)
+                nginx_changed=true
+                ;;
+              all)
+                app_changed=true
+                dashboard_changed=true
+                nginx_changed=true
+                compose_changed=true
+                ;;
+            esac
+          else
+            # Fallback robusto si BEFORE_SHA no está en historia (force-push, primer commit).
+            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+              base="HEAD~1"
+              if ! git rev-parse "$base" >/dev/null 2>&1; then
+                # Initial commit case: treat everything as changed.
+                app_changed=true
+                dashboard_changed=true
+                nginx_changed=true
+                compose_changed=true
+                base=""
+              fi
+            else
+              base="$BEFORE_SHA"
+            fi
+
+            if [ -n "$base" ]; then
+              changed_files="$(git diff --name-only "$base" HEAD)"
+              echo "Changed files:"
+              echo "$changed_files"
+
+              if echo "$changed_files" | grep -Eq '^(Dockerfile|entrypoint\.sh|package(-lock)?\.json|apps/(api-core|wa-session-manager|message-worker|ai-orchestrator)/|packages/|scripts/|tests/)'; then
+                app_changed=true
+              fi
+
+              if echo "$changed_files" | grep -Eq '^apps/dashboard/'; then
+                dashboard_changed=true
+              fi
+
+              if echo "$changed_files" | grep -Eq '^infra/nginx/'; then
+                nginx_changed=true
+              fi
+
+              if echo "$changed_files" | grep -Eq '^(docker-compose\.yml|infra/compose/docker-compose\.prod\.yml|\.github/workflows/deploy\.yml)$'; then
+                compose_changed=true
+              fi
+            fi
+          fi
+
+          any_changed=false
+          if [ "$app_changed" = true ] || [ "$dashboard_changed" = true ] || [ "$nginx_changed" = true ] || [ "$compose_changed" = true ]; then
+            any_changed=true
+          fi
+
+          {
+            echo "app_changed=$app_changed"
+            echo "dashboard_changed=$dashboard_changed"
+            echo "nginx_changed=$nginx_changed"
+            echo "compose_changed=$compose_changed"
+            echo "any_changed=$any_changed"
+          } >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: Validate changed areas
+    runs-on: ubuntu-latest
+    needs: detect
+    if: needs.detect.outputs.any_changed == 'true'
+
+    # Postgres + Redis efímeros para los tests del bot.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: ci-test-password-32-chars-ok-aaaa
+          POSTGRES_DB: platform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d platform"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: needs.detect.outputs.app_changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install root dependencies
+        if: needs.detect.outputs.app_changed == 'true'
+        run: npm ci
+
+      - name: Run root tests
+        if: needs.detect.outputs.app_changed == 'true'
+        env:
+          NODE_ENV: test
+          PLATFORM_DATABASE_URL: postgresql://app:ci-test-password-32-chars-ok-aaaa@localhost:5432/platform
+          TENANT_DATABASE_URL_DEFAULT: postgresql://app:ci-test-password-32-chars-ok-aaaa@localhost:5432/platform
+          REDIS_URL: redis://localhost:6379
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+          APP_SECRET: ci-test-app-secret-32-chars-min-aaa
+          ADMIN_API_KEY: ci-test-admin-key-32-chars-min-aaaa
+          JWT_SECRET: ci-test-jwt-secret-32-chars-min-aaaa
+          META_APP_SECRET: ci-test-meta-secret-16chars
+        run: npm test
+
+      - name: Enable pnpm
+        if: needs.detect.outputs.dashboard_changed == 'true'
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+
+      - name: Setup dashboard Node.js
+        if: needs.detect.outputs.dashboard_changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: apps/dashboard/pnpm-lock.yaml
+
+      - name: Install dashboard dependencies
+        if: needs.detect.outputs.dashboard_changed == 'true'
+        working-directory: apps/dashboard
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint dashboard
+        if: needs.detect.outputs.dashboard_changed == 'true'
+        working-directory: apps/dashboard
+        run: pnpm lint
+
+      - name: Build dashboard
+        if: needs.detect.outputs.dashboard_changed == 'true'
+        working-directory: apps/dashboard
+        env:
+          SKIP_ENV_VALIDATION: "1"
+        run: pnpm build
+
+      - name: Validate production compose
+        if: needs.detect.outputs.compose_changed == 'true'
+        env:
+          DB_PASSWORD: ci-db-password
+          DOMAIN: example.com
+          ADMIN_DOMAIN: admin.example.com
+          DASHBOARD_AUTH_SECRET: ci-dashboard-secret
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml config --quiet
+
+  build-images:
+    name: Build and push changed images
+    runs-on: ubuntu-latest
+    needs:
+      - detect
+      - ci
+    if: needs.detect.outputs.app_changed == 'true' || needs.detect.outputs.dashboard_changed == 'true' || needs.detect.outputs.nginx_changed == 'true'
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      app_image: ${{ steps.images.outputs.app_image }}
+      dashboard_image: ${{ steps.images.outputs.dashboard_image }}
+      nginx_image: ${{ steps.images.outputs.nginx_image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: images
+        env:
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+          IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+        run: |
+          test -n "$REGISTRY_URL"
+          test -n "$IMAGE_NAME"
+          echo "app_image=${REGISTRY_URL}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "dashboard_image=${REGISTRY_URL}/${IMAGE_NAME}-dashboard:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "nginx_image=${REGISTRY_URL}/${IMAGE_NAME}-nginx:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push app image
+        if: needs.detect.outputs.app_changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: runner
+          push: true
+          tags: ${{ steps.images.outputs.app_image }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max
+
+      - name: Build and push dashboard image
+        if: needs.detect.outputs.dashboard_changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/dashboard
+          file: apps/dashboard/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.dashboard_image }}
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,scope=dashboard,mode=max
+
+      - name: Build and push nginx image
+        if: needs.detect.outputs.nginx_changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/nginx
+          file: infra/nginx/Dockerfile
+          push: true
+          tags: ${{ steps.images.outputs.nginx_image }}
+          cache-from: type=gha,scope=nginx
+          cache-to: type=gha,scope=nginx,mode=max
+
+  deploy:
+    name: Deploy + smoke + rollback
+    runs-on: ubuntu-latest
+    needs:
+      - detect
+      - ci
+      - build-images
+    if: always() && needs.ci.result == 'success' && (needs.build-images.result == 'success' || needs.build-images.result == 'skipped') && needs.detect.outputs.any_changed == 'true' && (github.ref_name == 'main' || github.ref_name == 'master')
+
+    steps:
+      - name: Prepare SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Trust deploy host
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          port="${DEPLOY_PORT:-22}"
+          ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy with auto-rollback on smoke failure
+        id: deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+          APP_IMAGE: ${{ needs.build-images.outputs.app_image }}
+          DASHBOARD_IMAGE: ${{ needs.build-images.outputs.dashboard_image }}
+          NGINX_IMAGE: ${{ needs.build-images.outputs.nginx_image }}
+          APP_CHANGED: ${{ needs.detect.outputs.app_changed }}
+          DASHBOARD_CHANGED: ${{ needs.detect.outputs.dashboard_changed }}
+          NGINX_CHANGED: ${{ needs.detect.outputs.nginx_changed }}
+          COMPOSE_CHANGED: ${{ needs.detect.outputs.compose_changed }}
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+        run: |
+          port="${DEPLOY_PORT:-22}"
+
+          remote_env="DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH")"
+          remote_env="$remote_env DEPLOY_BRANCH=$(printf '%q' "$DEPLOY_BRANCH")"
+          remote_env="$remote_env DOCKER_USERNAME=$(printf '%q' "$DOCKER_USERNAME")"
+          remote_env="$remote_env DOCKER_PASSWORD=$(printf '%q' "$DOCKER_PASSWORD")"
+          remote_env="$remote_env REGISTRY_URL=$(printf '%q' "$REGISTRY_URL")"
+          remote_env="$remote_env APP_IMAGE=$(printf '%q' "$APP_IMAGE")"
+          remote_env="$remote_env DASHBOARD_IMAGE=$(printf '%q' "$DASHBOARD_IMAGE")"
+          remote_env="$remote_env NGINX_IMAGE=$(printf '%q' "$NGINX_IMAGE")"
+          remote_env="$remote_env APP_CHANGED=$(printf '%q' "$APP_CHANGED")"
+          remote_env="$remote_env DASHBOARD_CHANGED=$(printf '%q' "$DASHBOARD_CHANGED")"
+          remote_env="$remote_env NGINX_CHANGED=$(printf '%q' "$NGINX_CHANGED")"
+          remote_env="$remote_env COMPOSE_CHANGED=$(printf '%q' "$COMPOSE_CHANGED")"
+
+          ssh -i ~/.ssh/deploy_key -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_env bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          cd "$DEPLOY_PATH"
+          git fetch origin "$DEPLOY_BRANCH"
+          git checkout "$DEPLOY_BRANCH"
+          git pull --ff-only origin "$DEPLOY_BRANCH"
+
+          echo "$DOCKER_PASSWORD" | docker login "$REGISTRY_URL" -u "$DOCKER_USERNAME" --password-stdin
+
+          COMPOSE="docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile dashboard"
+
+          # Snapshot de imágenes actuales por container (para rollback).
+          prev_api_image=$(docker inspect -f '{{.Config.Image}}' whatsapp-saas-api 2>/dev/null || echo "")
+          prev_dashboard_image=$(docker inspect -f '{{.Config.Image}}' jestsolution-dashboard 2>/dev/null || echo "")
+          prev_nginx_image=$(docker inspect -f '{{.Config.Image}}' whatsapp-saas-nginx 2>/dev/null || echo "")
+          echo "Previous images: api=$prev_api_image dashboard=$prev_dashboard_image nginx=$prev_nginx_image"
+
+          pull_services=()
+          up_services=()
+
+          if [ "$APP_CHANGED" = "true" ]; then
+            export APP_IMAGE
+            pull_services+=(api whatsapp worker)
+            up_services+=(api whatsapp worker)
+          fi
+          if [ "$DASHBOARD_CHANGED" = "true" ]; then
+            export DASHBOARD_IMAGE
+            pull_services+=(dashboard)
+            up_services+=(dashboard)
+          fi
+          if [ "$NGINX_CHANGED" = "true" ]; then
+            export NGINX_IMAGE
+            pull_services+=(nginx)
+            up_services+=(nginx)
+          fi
+          if [ "$COMPOSE_CHANGED" = "true" ]; then
+            # Para compose-only changes, recreamos todo aunque no haya imagen nueva.
+            for s in api whatsapp worker dashboard nginx certbot; do
+              found=0
+              for u in "${up_services[@]:-}"; do [ "$u" = "$s" ] && found=1 && break; done
+              [ "$found" -eq 0 ] && up_services+=("$s")
+            done
+          fi
+
+          if [ "${#pull_services[@]}" -gt 0 ]; then
+            $COMPOSE pull "${pull_services[@]}"
+          fi
+          if [ "${#up_services[@]}" -gt 0 ]; then
+            $COMPOSE up -d --no-build "${up_services[@]}"
+          fi
+
+          # ── Smoke test: esperar healthchecks ───────────────────────────────────
+          smoke_ok=1
+          for c in whatsapp-saas-api whatsapp-saas-whatsapp whatsapp-saas-worker whatsapp-saas-nginx; do
+            for i in $(seq 1 30); do
+              s=$(docker inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null || echo missing)
+              [ "$s" = "healthy" ] && break
+              sleep 2
+            done
+            if [ "$s" != "healthy" ]; then
+              echo "[smoke] $c no llegó a healthy (estado=$s)"
+              docker logs "$c" --tail 50 || true
+              smoke_ok=0
+            else
+              echo "[smoke] $c healthy"
+            fi
+          done
+
+          # HTTP probes externos (a través de nginx).
+          if ! curl -fsS --max-time 10 https://jestsolution.tech/health >/dev/null; then
+            echo "[smoke] https://jestsolution.tech/health FALLÓ"
+            smoke_ok=0
+          else
+            echo "[smoke] https://jestsolution.tech/health OK"
+          fi
+          if [ "$DASHBOARD_CHANGED" = "true" ] || [ "$COMPOSE_CHANGED" = "true" ]; then
+            if ! curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' https://admin.jestsolution.tech/login | grep -qE '^(200|307)$'; then
+              echo "[smoke] dashboard /login FALLÓ"
+              smoke_ok=0
+            else
+              echo "[smoke] dashboard /login OK"
+            fi
+          fi
+
+          if [ "$smoke_ok" -ne 1 ]; then
+            echo "❌ SMOKE TEST FAILED — INICIANDO ROLLBACK"
+            rollback_services=()
+            if [ "$APP_CHANGED" = "true" ] && [ -n "$prev_api_image" ]; then
+              export APP_IMAGE="$prev_api_image"
+              rollback_services+=(api whatsapp worker)
+            fi
+            if [ "$DASHBOARD_CHANGED" = "true" ] && [ -n "$prev_dashboard_image" ]; then
+              export DASHBOARD_IMAGE="$prev_dashboard_image"
+              rollback_services+=(dashboard)
+            fi
+            if [ "$NGINX_CHANGED" = "true" ] && [ -n "$prev_nginx_image" ]; then
+              export NGINX_IMAGE="$prev_nginx_image"
+              rollback_services+=(nginx)
+            fi
+            if [ "${#rollback_services[@]}" -gt 0 ]; then
+              echo "Rollback: ${rollback_services[*]}"
+              $COMPOSE up -d --no-build "${rollback_services[@]}"
+              $COMPOSE ps
+            else
+              echo "No hay imagen previa para rollback. Stack queda como está; revisar manualmente."
+            fi
+            exit 1
+          fi
+
+          echo "✅ Deploy + smoke OK"
+          $COMPOSE ps
+          REMOTE

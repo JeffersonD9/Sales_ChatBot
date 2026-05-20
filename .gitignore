@@ -62,6 +62,7 @@ docs/architecture/*
 !docs/architecture/folder-structure.md
 !docs/architecture/module-system.md
 !docs/architecture/docker-topology.md
+!docs/POST_DEPLOY_CHECKLIST.md
 API_TEST_REPORT.md
 ARCHITECTURE.md
 

@@ -271,6 +271,123 @@ docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml \
 
 ---
 
+## 10.1 Deploy automatico con GitHub Actions
+
+El workflow vive en `.github/workflows/deploy.yml`. Se ejecuta automaticamente
+en pushes a `main` o `master`, y tambien puede lanzarse manualmente con
+`workflow_dispatch`.
+
+Flujo:
+
+1. Hace checkout del codigo.
+2. Detecta que area cambio.
+3. Valida solo lo necesario:
+   - App/bot: `npm ci` + `npm test`.
+   - Dashboard: `pnpm install --frozen-lockfile` + `pnpm lint` + `pnpm build`.
+   - Compose: `docker compose ... config --quiet`.
+4. Construye y publica solo las imagenes afectadas:
+   - App/bot: `${REGISTRY_URL}/${IMAGE_NAME}:${GITHUB_SHA}`.
+   - Dashboard: `${REGISTRY_URL}/${IMAGE_NAME}-dashboard:${GITHUB_SHA}`.
+   - Nginx: `${REGISTRY_URL}/${IMAGE_NAME}-nginx:${GITHUB_SHA}`.
+5. Entra por SSH al VPS, actualiza el repo con `git pull --ff-only`, descarga
+   solo las imagenes nuevas y recrea solo los servicios afectados.
+
+Reglas de deploy selectivo:
+
+```text
+apps/dashboard/**        -> actualiza solo dashboard
+infra/nginx/**           -> actualiza solo nginx
+apps/api-core/**         -> actualiza api, whatsapp y worker
+apps/wa-session-manager/** -> actualiza api, whatsapp y worker
+apps/message-worker/**   -> actualiza api, whatsapp y worker
+apps/ai-orchestrator/**  -> actualiza api, whatsapp y worker
+packages/**              -> actualiza api, whatsapp y worker
+Dockerfile/package*.json -> actualiza api, whatsapp y worker
+docker-compose.yml o infra/compose/docker-compose.prod.yml -> valida compose y recrea servicios si no hay imagen nueva
+```
+
+Desde `workflow_dispatch` puedes forzar el target manualmente:
+
+```text
+auto       Detecta cambios automaticamente.
+dashboard  Construye y despliega solo el dashboard.
+app        Construye y despliega api, whatsapp y worker.
+nginx      Construye y despliega solo nginx.
+all        Fuerza todas las imagenes y servicios principales.
+```
+
+Secrets requeridos en GitHub (Settings → Secrets and variables → Actions):
+
+```text
+DEPLOY_HOST       Host o IP del VPS, p.ej. 177.7.58.11
+DEPLOY_PORT       Puerto SSH del VPS (default 22; tras hardening, p.ej. 52221).
+DEPLOY_USER       Usuario SSH con permisos para Docker y el repo, p.ej. root
+DEPLOY_KEY        Llave privada SSH (ED25519, sin passphrase) — dedicada al CI
+DEPLOY_PATH       Ruta del repo en el VPS, p.ej. /opt/whatsapp-saas
+REGISTRY_URL      Host del registry: ghcr.io (recomendado)
+IMAGE_NAME        Namespace + nombre, p.ej. jeffersond9/whatsapp-saas
+DOCKER_USERNAME   Usuario del registry. Para GHCR: tu username de GitHub
+DOCKER_PASSWORD   Token del registry. Para GHCR: GitHub PAT con scope `write:packages`
+```
+
+### Setup paso a paso (primera vez)
+
+1. **Generar SSH key dedicada para CI** (en tu máquina local):
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C "github-actions-deploy" -f ./ci_deploy_key
+   ```
+
+2. **Añadir la pubkey al VPS:**
+
+   ```bash
+   cat ci_deploy_key.pub | ssh root@<VPS_IP> 'cat >> /root/.ssh/authorized_keys'
+   ```
+
+3. **Crear GitHub PAT para GHCR:** Settings → Developer settings → Personal access
+   tokens → Tokens (classic) → Generate new → scope `write:packages` y `read:packages`.
+
+4. **Configurar los 9 secrets** listados arriba en el repo.
+
+5. **(Opcional pero recomendado)** En el VPS, hacer login al registry una vez para
+   que las imágenes default pueda preexistir:
+
+   ```bash
+   echo "<PAT>" | docker login ghcr.io -u <tu-username-gh> --password-stdin
+   ```
+
+El servidor debe tener el repo clonado en `DEPLOY_PATH`, Docker Compose v2
+instalado y el `.env` de produccion ya configurado. El primer bootstrap TLS
+puede requerir los pasos manuales de la seccion 5; despues, el pipeline actualiza
+el stack sin intervencion manual.
+
+### Smoke test y rollback automático
+
+Tras `docker compose up -d`, el deploy hace:
+
+1. Espera a que `api`, `whatsapp`, `worker`, `nginx` reporten `health=healthy`.
+2. `curl https://${DOMAIN}/health` desde el propio VPS.
+3. Si el dashboard cambió, `curl https://${ADMIN_DOMAIN}/login`.
+
+Si **cualquier** de esos checks falla, el deploy intenta volver a la imagen
+inmediatamente anterior usando `docker inspect` del container previo. El job
+de GitHub termina en rojo para que recibas notificación.
+
+Para probarlo:
+
+```bash
+# 1. Validar localmente antes del push
+npm test
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml config --quiet
+
+# 2. Hacer push a main/master o lanzar el workflow manualmente desde GitHub.
+
+# 3. En el VPS, verificar estado:
+docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile dashboard ps
+```
+
+---
+
 ## 11. Logs
 
 ```bash

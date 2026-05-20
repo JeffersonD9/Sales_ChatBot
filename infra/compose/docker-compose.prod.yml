@@ -90,7 +90,7 @@ services:
     build:
       context: .
       target: runner
-    image: jestsolution.tech/whatsapp-saas:prod
+    image: ${APP_IMAGE:-jestsolution.tech/whatsapp-saas:prod}
     container_name: whatsapp-saas-api
     restart: unless-stopped
     cpus: "0.30"
@@ -136,7 +136,7 @@ services:
         max-file: "3"
 
   whatsapp:
-    image: jestsolution.tech/whatsapp-saas:prod
+    image: ${APP_IMAGE:-jestsolution.tech/whatsapp-saas:prod}
     container_name: whatsapp-saas-whatsapp
     restart: unless-stopped
     cpus: "0.50"
@@ -183,7 +183,7 @@ services:
         max-file: "3"
 
   worker:
-    image: jestsolution.tech/whatsapp-saas:prod
+    image: ${APP_IMAGE:-jestsolution.tech/whatsapp-saas:prod}
     container_name: whatsapp-saas-worker
     restart: unless-stopped
     cpus: "0.80"
@@ -229,7 +229,7 @@ services:
         max-file: "3"
 
   ai-worker:
-    image: jestsolution.tech/whatsapp-saas:prod
+    image: ${APP_IMAGE:-jestsolution.tech/whatsapp-saas:prod}
     container_name: whatsapp-saas-ai-worker
     restart: unless-stopped
     cpus: "0.80"
@@ -277,7 +277,7 @@ services:
   nginx:
     build:
       context: ./infra/nginx
-    image: jestsolution.tech/whatsapp-saas-nginx:prod
+    image: ${NGINX_IMAGE:-jestsolution.tech/whatsapp-saas-nginx:prod}
     container_name: whatsapp-saas-nginx
     restart: unless-stopped
     cpus: "0.20"
@@ -350,7 +350,7 @@ services:
     build:
       context: ./apps/dashboard
       dockerfile: Dockerfile
-    image: jestsolution.tech/dashboard:prod
+    image: ${DASHBOARD_IMAGE:-jestsolution.tech/dashboard:prod}
     container_name: jestsolution-dashboard
     restart: unless-stopped
     cpus: "0.30"
