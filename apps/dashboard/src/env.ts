@@ -27,6 +27,8 @@ const schema = z.object({
   BOT_DOMAIN: z.string().default('bot.jestsolution.tech'),
 
   REDIS_URL: z.string().url().optional(),
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().default('production'),
 })
 
 // Durante `next build` en Docker se setea SKIP_ENV_VALIDATION=1 porque las

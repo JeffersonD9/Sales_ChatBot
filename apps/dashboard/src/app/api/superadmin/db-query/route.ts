@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { platformPool, tenantPool } from '@/db'
 import { env } from '@/env'
+import { auditLog } from '@/lib/audit-log'
 import { validateSession } from '@/lib/auth'
 import { getClientIp } from '@/lib/client-ip'
 import { checkAndRecordFixedWindowLimit } from '@/lib/rate-limit'
@@ -275,10 +276,6 @@ function queryHash(query: string): string {
   return createHash('sha256').update(query).digest('hex').slice(0, 16)
 }
 
-function auditDbConsole(event: string, fields: Record<string, unknown>) {
-  console.warn(JSON.stringify({ event: `db_console.${event}`, ...fields }))
-}
-
 function sanitizeQueryError(error: unknown): string {
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
   if (code === '57014') return 'La consulta excedio el tiempo permitido.'
@@ -300,14 +297,14 @@ export async function POST(req: NextRequest) {
   try {
     const browserError = validateBrowserRequest(req)
     if (browserError) {
-      auditDbConsole('rejected_request', { ip, reason: browserError })
+      auditLog('db_console.rejected_request', 'warn', { ip, reason: browserError })
       return secureResponse(forbidden('Solicitud no permitida'))
     }
 
     const user = await validateSession()
     if (!user) return unauthorized()
     if (user.role !== 'superadmin') {
-      auditDbConsole('forbidden', { ip, userId: user.id, role: user.role })
+      auditLog('db_console.forbidden', 'warn', { ip, userId: user.id, role: user.role })
       return forbidden('Solo superadmin puede consultar la base de datos')
     }
 
@@ -317,7 +314,7 @@ export async function POST(req: NextRequest) {
       RATE_LIMIT_WINDOW_MS,
     )
     if (!limit.allowed) {
-      auditDbConsole('rate_limited', { ip, userId: user.id })
+      auditLog('db_console.rate_limited', 'warn', { ip, userId: user.id })
       return secureResponse(err('Demasiadas consultas. Espera un momento e intenta de nuevo.', 429))
     }
 
@@ -327,7 +324,11 @@ export async function POST(req: NextRequest) {
 
     if (parsed.data.mode === 'write') {
       if (!env.DB_CONSOLE_WRITES_ENABLED) {
-        auditDbConsole('write_disabled', { ip, userId: user.id, database: parsed.data.database })
+        auditLog('db_console.write_disabled', 'warn', {
+          ip,
+          userId: user.id,
+          database: parsed.data.database,
+        })
         return secureResponse(forbidden('La escritura desde consola no esta habilitada.'))
       }
 
@@ -345,7 +346,7 @@ export async function POST(req: NextRequest) {
         ? normalizeWriteQuery(parsed.data.query)
         : normalizeReadOnlyQuery(parsed.data.query)
     if (!normalized.ok) {
-      auditDbConsole('rejected_query', {
+      auditLog('db_console.rejected_query', 'warn', {
         ip,
         userId: user.id,
         database: parsed.data.database,
@@ -361,7 +362,7 @@ export async function POST(req: NextRequest) {
     try {
       result = await runDbConsoleQuery(pool, normalized.query, parsed.data.mode)
     } catch (error) {
-      auditDbConsole('query_failed', {
+      auditLog('db_console.query_failed', 'error', {
         ip,
         userId: user.id,
         database: parsed.data.database,
@@ -373,7 +374,7 @@ export async function POST(req: NextRequest) {
       return secureResponse(err(sanitizeQueryError(error), 400))
     }
 
-    auditDbConsole('query_ok', {
+    auditLog('db_console.query_ok', parsed.data.mode === 'write' ? 'warn' : 'info', {
       ip,
       userId: user.id,
       database: parsed.data.database,

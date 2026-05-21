@@ -27,6 +27,7 @@
     "drizzle-orm": "0.43.1",
     "pg": "8.13.3",
     "@node-rs/argon2": "2.0.0",
+    "@sentry/nextjs": "^10.53.1",
     "nanoid": "5.1.5",
     "zod": "3.24.3",
     "@tanstack/react-table": "8.21.3",
