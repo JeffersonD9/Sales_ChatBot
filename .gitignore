@@ -11,6 +11,7 @@ node_modules/
 # Dashboard build artifacts
 apps/dashboard/.next/
 apps/dashboard/.env
+apps/dashboard/tsconfig.tsbuildinfo
 
 # Logs
 logs/
