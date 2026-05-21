@@ -444,7 +444,12 @@ jobs:
 
           # ── Smoke test: esperar healthchecks ───────────────────────────────────
           smoke_ok=1
-          for c in whatsapp-saas-api whatsapp-saas-whatsapp whatsapp-saas-worker whatsapp-saas-nginx; do
+          health_targets=(whatsapp-saas-api whatsapp-saas-whatsapp whatsapp-saas-worker whatsapp-saas-nginx)
+          # Esperamos al dashboard si fue tocado o si compose-only lo recreó.
+          if [ "$DASHBOARD_CHANGED" = "true" ] || [ "$COMPOSE_CHANGED" = "true" ]; then
+            health_targets+=(jestsolution-dashboard)
+          fi
+          for c in "${health_targets[@]}"; do
             for i in $(seq 1 30); do
               s=$(docker inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null || echo missing)
               [ "$s" = "healthy" ] && break
