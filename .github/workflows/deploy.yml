@@ -109,7 +109,9 @@ jobs:
                 nginx_changed=true
               fi
 
-              if echo "$changed_files" | grep -Eq '^(docker-compose\.yml|infra/compose/docker-compose\.prod\.yml|\.github/workflows/deploy\.yml)$'; then
+              # Solo cambios reales de compose disparan deploy. El propio workflow
+              # se valida solo al ejecutarse; no necesita un deploy completo.
+              if echo "$changed_files" | grep -Eq '^(docker-compose\.yml|infra/compose/docker-compose\.prod\.yml)$'; then
                 compose_changed=true
               fi
             fi
@@ -349,9 +351,11 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME || github.actor }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
           REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
-          APP_IMAGE: ${{ needs.build-images.outputs.app_image }}
-          DASHBOARD_IMAGE: ${{ needs.build-images.outputs.dashboard_image }}
-          NGINX_IMAGE: ${{ needs.build-images.outputs.nginx_image }}
+          # GH Actions redacta los job outputs que contienen valores de secrets
+          # (REGISTRY_URL/IMAGE_NAME) y llegan vacíos al deploy. Recomponemos los
+          # tags aquí leyendo los secrets + SHA directamente.
+          IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+          GITHUB_SHA: ${{ github.sha }}
           APP_CHANGED: ${{ needs.detect.outputs.app_changed }}
           DASHBOARD_CHANGED: ${{ needs.detect.outputs.dashboard_changed }}
           NGINX_CHANGED: ${{ needs.detect.outputs.nginx_changed }}
@@ -359,6 +363,10 @@ jobs:
           DEPLOY_BRANCH: ${{ github.ref_name }}
         run: |
           port="${DEPLOY_PORT:-22}"
+
+          APP_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}:${GITHUB_SHA}"
+          DASHBOARD_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}-dashboard:${GITHUB_SHA}"
+          NGINX_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}-nginx:${GITHUB_SHA}"
 
           remote_env="DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH")"
           remote_env="$remote_env DEPLOY_BRANCH=$(printf '%q' "$DEPLOY_BRANCH")"
