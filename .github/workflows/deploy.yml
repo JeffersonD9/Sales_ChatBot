@@ -372,9 +372,20 @@ jobs:
         run: |
           port="${DEPLOY_PORT:-22}"
 
-          APP_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}:${GITHUB_SHA}"
-          DASHBOARD_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}-dashboard:${GITHUB_SHA}"
-          NGINX_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}-nginx:${GITHUB_SHA}"
+          # Solo enviamos *_IMAGE cuando el área cambió. Si no, dejamos la var sin
+          # poner para que compose caiga al default :prod (último build estable).
+          APP_IMAGE=""
+          DASHBOARD_IMAGE=""
+          NGINX_IMAGE=""
+          if [ "$APP_CHANGED" = "true" ]; then
+            APP_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}:${GITHUB_SHA}"
+          fi
+          if [ "$DASHBOARD_CHANGED" = "true" ]; then
+            DASHBOARD_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}-dashboard:${GITHUB_SHA}"
+          fi
+          if [ "$NGINX_CHANGED" = "true" ]; then
+            NGINX_IMAGE="${REGISTRY_URL}/${IMAGE_NAME}-nginx:${GITHUB_SHA}"
+          fi
 
           remote_env="DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH")"
           remote_env="$remote_env DEPLOY_BRANCH=$(printf '%q' "$DEPLOY_BRANCH")"
