@@ -1,6 +1,7 @@
 import { db } from '@/db'
 import { panelUsers } from '@/db/schema'
 import { createSession, sessionCookieOptions } from '@/lib/auth'
+import { getClientIp } from '@/lib/client-ip'
 import { SESSION_COOKIE } from '@/lib/constants'
 import { verifyPassword } from '@/lib/password'
 import { checkRateLimit, clearRateLimit, recordFailedAttempt } from '@/lib/rate-limit'
@@ -13,10 +14,6 @@ const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 })
-
-function getClientIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
-}
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req)

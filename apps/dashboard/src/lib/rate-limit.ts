@@ -65,3 +65,54 @@ export async function recordFailedAttempt(key: string): Promise<void> {
 export async function clearRateLimit(key: string): Promise<void> {
   await db.delete(panelRateLimits).where(eq(panelRateLimits.key, key))
 }
+
+export async function checkAndRecordFixedWindowLimit(
+  key: string,
+  maxRequests: number,
+  windowMs: number,
+): Promise<RateLimitResult> {
+  const now = new Date()
+  const windowStart = new Date(now.getTime() - windowMs)
+  const retryAfterDate = new Date(now.getTime() + windowMs)
+
+  const existing = await db.query.panelRateLimits.findFirst({
+    where: eq(panelRateLimits.key, key),
+  })
+
+  if (!existing || !existing.first_attempt_at || existing.first_attempt_at < windowStart) {
+    await db
+      .insert(panelRateLimits)
+      .values({ key, count: 1, first_attempt_at: now, blocked_until: null })
+      .onConflictDoUpdate({
+        target: panelRateLimits.key,
+        set: { count: 1, first_attempt_at: now, blocked_until: null },
+      })
+    return { allowed: true }
+  }
+
+  if (existing.blocked_until && existing.blocked_until > now) {
+    return {
+      allowed: false,
+      retryAfterDate: existing.blocked_until,
+      retryAfterMs: existing.blocked_until.getTime() - now.getTime(),
+    }
+  }
+
+  const newCount = existing.count + 1
+  const blockedUntil = newCount > maxRequests ? retryAfterDate : null
+
+  await db
+    .update(panelRateLimits)
+    .set({ count: newCount, blocked_until: blockedUntil })
+    .where(eq(panelRateLimits.key, key))
+
+  if (blockedUntil) {
+    return {
+      allowed: false,
+      retryAfterDate: blockedUntil,
+      retryAfterMs: blockedUntil.getTime() - now.getTime(),
+    }
+  }
+
+  return { allowed: true }
+}

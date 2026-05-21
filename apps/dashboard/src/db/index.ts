@@ -10,10 +10,10 @@ const poolConfig = {
 }
 
 // Platform DB: tenants, panel_users, panel_sessions, panel_rate_limits, plans
-const platformPool = new Pool({ connectionString: env.DATABASE_URL, ...poolConfig })
+export const platformPool = new Pool({ connectionString: env.DATABASE_URL, ...poolConfig })
 
 // Tenant shared DB: products, sessions, orders, messages, tenant_whatsapp_config
-const tenantPool = new Pool({ connectionString: env.TENANT_DATABASE_URL, ...poolConfig })
+export const tenantPool = new Pool({ connectionString: env.TENANT_DATABASE_URL, ...poolConfig })
 
 export const db = drizzle(platformPool, { schema })
 export const tenantDb = drizzle(tenantPool, { schema })

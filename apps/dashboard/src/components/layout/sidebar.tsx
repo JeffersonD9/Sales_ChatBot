@@ -39,7 +39,7 @@ export function Sidebar({ collapsed, onToggle, user }: SidebarProps) {
 
       {/* ── Navigation ───────────────────────────────────────────────────── */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {NAV_ITEMS.map((item) => (
+        {NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user.role)).map((item) => (
           <NavItem
             key={item.href}
             href={item.href}

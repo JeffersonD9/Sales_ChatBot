@@ -1,6 +1,7 @@
 import { db } from '@/db'
 import { panelSessions } from '@/db/schema'
 import { createSession, hashToken, revokeCurrentSession, sessionCookieOptions } from '@/lib/auth'
+import { getClientIp } from '@/lib/client-ip'
 import { SESSION_COOKIE } from '@/lib/constants'
 import { ok, unauthorized } from '@/lib/response'
 import { and, eq, gt } from 'drizzle-orm'
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
 
   await revokeCurrentSession('refresh')
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  const ip = getClientIp(req)
   const newToken = await createSession(row.user.id, ip, req.headers.get('user-agent'))
 
   const response = ok({ refreshed: true })

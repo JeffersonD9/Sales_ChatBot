@@ -18,6 +18,10 @@ const schema = z.object({
   SESSION_TTL_SECONDS: z.coerce.number().positive().default(28800),
 
   ALLOWED_IPS: z.string().default(''),
+  DB_CONSOLE_WRITES_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true'),
 
   PANEL_DOMAIN: z.string().default('admin.jestsolution.tech'),
   BOT_DOMAIN: z.string().default('bot.jestsolution.tech'),

@@ -1,11 +1,19 @@
 import type { LucideIcon } from 'lucide-react'
-import { Building2, LayoutDashboard, MessageSquare, ShoppingCart, Users } from 'lucide-react'
+import {
+  Building2,
+  Database,
+  LayoutDashboard,
+  MessageSquare,
+  ShoppingCart,
+  Users,
+} from 'lucide-react'
 
 export type NavItem = {
   href: string
   label: string
   icon: LucideIcon
   exact?: boolean
+  roles?: string[]
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -13,5 +21,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/tenants', label: 'Tenants', icon: Building2 },
   { href: '/orders', label: 'Órdenes', icon: ShoppingCart },
   { href: '/sessions', label: 'Sesiones', icon: MessageSquare },
-  { href: '/admin-users', label: 'Usuarios Admin', icon: Users },
+  { href: '/admin-users', label: 'Usuarios Admin', icon: Users, roles: ['superadmin'] },
+  { href: '/db-console', label: 'Consola DB', icon: Database, roles: ['superadmin'] },
 ]

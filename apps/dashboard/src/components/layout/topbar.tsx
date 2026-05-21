@@ -12,6 +12,7 @@ const ROUTE_LABELS: Record<string, string> = {
   orders: 'Órdenes',
   sessions: 'Sesiones',
   'admin-users': 'Usuarios Admin',
+  'db-console': 'Consola DB',
 }
 
 function Breadcrumbs() {

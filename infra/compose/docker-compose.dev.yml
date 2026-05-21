@@ -217,9 +217,11 @@ services:
     build:
       context: ./apps/dashboard
       dockerfile: Dockerfile
+      target: deps
     image: jestsolution.tech/dashboard:dev
     container_name: jestsolution-dashboard-dev
     restart: unless-stopped
+    command: ["pnpm", "dev"]
     ports:
       - "3002:3001"
     env_file: .env
@@ -231,6 +233,7 @@ services:
       TENANT_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${DB_PASSWORD:-devpassword}@postgres:5432/${TENANT_DB_NAME_DEFAULT:-tenant_shared_low}
       AUTH_SECRET: ${DASHBOARD_AUTH_SECRET:-dev-secret-change-in-production-min32chars}
       SESSION_TTL_SECONDS: "28800"
+      DB_CONSOLE_WRITES_ENABLED: "true"
       PANEL_DOMAIN: localhost
       BOT_DOMAIN: localhost
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
@@ -239,6 +242,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./apps/dashboard:/app
+      - /app/node_modules
+      - /app/.next
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
