@@ -379,6 +379,9 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      # Next.js standalone server: bind explícito a todas las interfaces
+      # para que el healthcheck contra 127.0.0.1 funcione dentro del container.
+      HOSTNAME: 0.0.0.0
     profiles:
       - dashboard
     depends_on:
