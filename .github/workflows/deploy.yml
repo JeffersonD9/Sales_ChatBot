@@ -228,6 +228,8 @@ jobs:
           DOMAIN: example.com
           ADMIN_DOMAIN: admin.example.com
           DASHBOARD_AUTH_SECRET: ci-dashboard-secret
+          REGISTRY_URL: ghcr.io/example
+          IMAGE_NAME: whatsapp-saas
         run: |
           cp .env.example .env
           docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml config --quiet
@@ -286,7 +288,9 @@ jobs:
           file: Dockerfile
           target: runner
           push: true
-          tags: ${{ steps.images.outputs.app_image }}
+          tags: |
+            ${{ steps.images.outputs.app_image }}
+            ${{ secrets.REGISTRY_URL }}/${{ secrets.IMAGE_NAME }}:prod
           cache-from: type=gha,scope=app
           cache-to: type=gha,scope=app,mode=max
 
@@ -297,7 +301,9 @@ jobs:
           context: apps/dashboard
           file: apps/dashboard/Dockerfile
           push: true
-          tags: ${{ steps.images.outputs.dashboard_image }}
+          tags: |
+            ${{ steps.images.outputs.dashboard_image }}
+            ${{ secrets.REGISTRY_URL }}/${{ secrets.IMAGE_NAME }}-dashboard:prod
           cache-from: type=gha,scope=dashboard
           cache-to: type=gha,scope=dashboard,mode=max
 
@@ -308,7 +314,9 @@ jobs:
           context: infra/nginx
           file: infra/nginx/Dockerfile
           push: true
-          tags: ${{ steps.images.outputs.nginx_image }}
+          tags: |
+            ${{ steps.images.outputs.nginx_image }}
+            ${{ secrets.REGISTRY_URL }}/${{ secrets.IMAGE_NAME }}-nginx:prod
           cache-from: type=gha,scope=nginx
           cache-to: type=gha,scope=nginx,mode=max
 
@@ -373,6 +381,7 @@ jobs:
           remote_env="$remote_env DOCKER_USERNAME=$(printf '%q' "$DOCKER_USERNAME")"
           remote_env="$remote_env DOCKER_PASSWORD=$(printf '%q' "$DOCKER_PASSWORD")"
           remote_env="$remote_env REGISTRY_URL=$(printf '%q' "$REGISTRY_URL")"
+          remote_env="$remote_env IMAGE_NAME=$(printf '%q' "$IMAGE_NAME")"
           remote_env="$remote_env APP_IMAGE=$(printf '%q' "$APP_IMAGE")"
           remote_env="$remote_env DASHBOARD_IMAGE=$(printf '%q' "$DASHBOARD_IMAGE")"
           remote_env="$remote_env NGINX_IMAGE=$(printf '%q' "$NGINX_IMAGE")"
