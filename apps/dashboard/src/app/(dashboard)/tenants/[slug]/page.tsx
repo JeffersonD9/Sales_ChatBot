@@ -75,7 +75,9 @@ function StatusBadge({ status }: { status: string }) {
 
 function PlanBadge({ plan }: { plan: string }) {
   const map: Record<string, string> = {
+    basic: 'bg-muted text-muted-foreground',
     starter: 'bg-muted text-muted-foreground',
+    premium: 'bg-primary/10 text-primary',
     pro: 'bg-primary/10 text-primary',
     enterprise: 'bg-amber-500/10 text-amber-600',
   }

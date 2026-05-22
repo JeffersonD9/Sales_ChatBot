@@ -70,6 +70,9 @@ log "Container: $CONTAINER | Platform DB: $PLATFORM_DB | Tenant DB: $TENANT_DB"
 apply_sql "$PLATFORM_DB" "$SCRIPT_DIR/init.sql"
 apply_sql "$PLATFORM_DB" "$SCRIPT_DIR/upgrade-platform-tenancy.sql"
 
+# Permisos del rol dashboard_app (idempotente; salta si el rol no existe).
+apply_sql "$PLATFORM_DB" "$SCRIPT_DIR/grants.sql"
+
 # Tenant DB compartida: schema base idempotente.
 apply_sql "$TENANT_DB" "$SCRIPT_DIR/tenant-init.sql"
 

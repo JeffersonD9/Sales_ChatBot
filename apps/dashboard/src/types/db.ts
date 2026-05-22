@@ -4,6 +4,7 @@ import type {
   panelRateLimits,
   panelSessions,
   panelUsers,
+  plans,
   products,
   sessions,
   tenantWhatsappConfig,
@@ -13,6 +14,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 
 // ── Select types (lo que devuelve la DB) ──────────────────────────────────────
 export type Tenant = InferSelectModel<typeof tenants>
+export type BillingPlan = InferSelectModel<typeof plans>
 export type Product = InferSelectModel<typeof products>
 export type Session = InferSelectModel<typeof sessions>
 export type Order = InferSelectModel<typeof orders>
@@ -24,6 +26,7 @@ export type TenantWhatsappConfig = InferSelectModel<typeof tenantWhatsappConfig>
 
 // ── Insert types (lo que enviás a la DB) ──────────────────────────────────────
 export type NewTenant = InferInsertModel<typeof tenants>
+export type NewBillingPlan = InferInsertModel<typeof plans>
 export type NewProduct = InferInsertModel<typeof products>
 export type NewMessage = InferInsertModel<typeof messages>
 export type NewPanelUser = InferInsertModel<typeof panelUsers>

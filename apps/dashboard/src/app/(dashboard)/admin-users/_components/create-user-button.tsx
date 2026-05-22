@@ -11,12 +11,12 @@ import { z } from 'zod'
 const schema = z.object({
   username: z
     .string()
-    .min(3, 'MÃ­nimo 3 caracteres')
+    .min(3, 'Mínimo 3 caracteres')
     .max(64)
-    .regex(/^[a-z0-9_-]+$/, 'Solo minÃºsculas, nÃºmeros, _ y -'),
-  email: z.string().email('Email invÃ¡lido'),
-  password: z.string().min(8, 'MÃ­nimo 8 caracteres').max(128),
-  role: z.enum(['superadmin', 'admin', 'viewer']),
+    .regex(/^[a-z0-9_-]+$/, 'Solo minúsculas, números, _ y -'),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(8, 'Mínimo 8 caracteres').max(128),
+  role: z.enum(['admin', 'viewer']),
 })
 
 type FormData = z.infer<typeof schema>
@@ -64,7 +64,7 @@ export function CreateUserButton() {
       setOpen(false)
       router.refresh()
     } catch {
-      toast.error('Error de conexiÃ³n')
+      toast.error('Error de conexión')
     }
   }
 
@@ -120,20 +120,19 @@ export function CreateUserButton() {
                 />
               </Field>
 
-              <Field label="ContraseÃ±a" error={errors.password?.message}>
+              <Field label="Contraseña" error={errors.password?.message}>
                 <input
                   {...register('password')}
                   type="password"
-                  placeholder="MÃ­nimo 8 caracteres"
+                  placeholder="Mínimo 8 caracteres"
                   className={INPUT}
                 />
               </Field>
 
               <Field label="Rol" error={errors.role?.message}>
                 <select {...register('role')} className={INPUT}>
-                  <option value="viewer">Viewer â€” solo lectura</option>
-                  <option value="admin">Admin â€” gestiÃ³n de tenants y Ã³rdenes</option>
-                  <option value="superadmin">Superadmin â€” acceso total</option>
+                  <option value="viewer">Viewer - solo lectura</option>
+                  <option value="admin">Admin - gestión de tenants y órdenes</option>
                 </select>
               </Field>
 
@@ -151,7 +150,7 @@ export function CreateUserButton() {
                   disabled={isSubmitting}
                   className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Creandoâ€¦' : 'Crear usuario'}
+                  {isSubmitting ? 'Creando...' : 'Crear usuario'}
                 </button>
               </div>
             </form>

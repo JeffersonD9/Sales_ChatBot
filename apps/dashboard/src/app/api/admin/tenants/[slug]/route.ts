@@ -25,7 +25,10 @@ const patchSchema = z.object({
     .union([z.string().email(), z.literal('')])
     .nullable()
     .optional(),
-  plan: z.enum(['starter', 'pro', 'enterprise']).optional(),
+  plan: z
+    .string()
+    .regex(/^[a-z0-9_-]+$/)
+    .optional(),
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {

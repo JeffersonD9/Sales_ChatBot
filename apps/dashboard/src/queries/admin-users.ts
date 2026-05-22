@@ -1,7 +1,7 @@
 import { db } from '@/db'
 import { panelUsers } from '@/db/schema'
 import { hashPassword } from '@/lib/password'
-import { count, desc, eq, ilike, or } from 'drizzle-orm'
+import { and, count, desc, eq, ilike, ne, or } from 'drizzle-orm'
 
 export type AdminUserRow = {
   id: string
@@ -77,7 +77,16 @@ export async function toggleAdminUserActive(id: string, is_active: boolean) {
   const [updated] = await db
     .update(panelUsers)
     .set({ is_active, updated_at: new Date() })
-    .where(eq(panelUsers.id, id))
-    .returning({ id: panelUsers.id, is_active: panelUsers.is_active })
+    .where(and(eq(panelUsers.id, id), ne(panelUsers.role, 'superadmin')))
+    .returning({ id: panelUsers.id, role: panelUsers.role, is_active: panelUsers.is_active })
+  return updated ?? null
+}
+
+export async function updateAdminUserRole(id: string, role: 'admin' | 'viewer') {
+  const [updated] = await db
+    .update(panelUsers)
+    .set({ role, updated_at: new Date() })
+    .where(and(eq(panelUsers.id, id), ne(panelUsers.role, 'superadmin')))
+    .returning({ id: panelUsers.id, role: panelUsers.role, is_active: panelUsers.is_active })
   return updated ?? null
 }

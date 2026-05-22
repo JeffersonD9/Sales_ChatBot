@@ -1,5 +1,6 @@
 import { DataTable, TableSkeleton } from '@/components/data-table/data-table'
 import { PageHeader } from '@/components/shared/page-header'
+import { getPlanList } from '@/queries/plans'
 import { getTenantList } from '@/queries/tenants'
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
@@ -21,14 +22,17 @@ export default async function TenantsPage({ searchParams }: { searchParams: Sear
     query: String(sp.q ?? ''),
   }
 
-  const { data, total } = await getTenantList(params)
+  const [{ data, total }, { rows: planOptions }] = await Promise.all([
+    getTenantList(params),
+    getPlanList({ page: 1, pageSize: 100 }),
+  ])
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Tenants"
         description={`${total} cliente${total !== 1 ? 's' : ''} en total`}
-        action={<CreateTenantButton />}
+        action={<CreateTenantButton planOptions={planOptions} />}
       />
 
       <Suspense fallback={<TableSkeleton rows={params.pageSize} cols={columns.length} />}>

@@ -12,7 +12,7 @@ const createSchema = z.object({
     .regex(/^[a-z0-9_-]+$/, 'Solo letras minúsculas, números, _ y -'),
   email: z.string().email(),
   password: z.string().min(8).max(128),
-  role: z.enum(['superadmin', 'admin', 'viewer']),
+  role: z.enum(['admin', 'viewer']),
 })
 
 export async function GET(req: Request) {

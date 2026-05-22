@@ -1,6 +1,7 @@
 'use client'
 
 import { slugify } from '@/lib/utils'
+import type { PlanRow } from '@/queries/plans'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -13,12 +14,14 @@ const schema = z.object({
   name: z.string().min(2, 'Mínimo 2 caracteres').max(256),
   owner_phone: z.string().min(7, 'Mínimo 7 dígitos').max(32),
   owner_email: z.union([z.string().email('Email inválido'), z.literal('')]).optional(),
-  plan: z.enum(['starter', 'pro', 'enterprise']),
+  plan: z.string().regex(/^[a-z0-9_-]+$/, 'Selecciona un plan válido'),
 })
 
 type FormData = z.infer<typeof schema>
 
-export function CreateTenantButton() {
+export function CreateTenantButton({
+  planOptions,
+}: { planOptions: Pick<PlanRow, 'code' | 'name'>[] }) {
   const [open, setOpen] = useState(false)
   const router = useRouter()
 
@@ -30,7 +33,7 @@ export function CreateTenantButton() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { plan: 'starter' },
+    defaultValues: { plan: planOptions[0]?.code ?? 'basic' },
   })
 
   const name = watch('name')
@@ -133,9 +136,11 @@ export function CreateTenantButton() {
 
               <Field label="Plan" error={errors.plan?.message}>
                 <select {...register('plan')} className={INPUT}>
-                  <option value="starter">Starter</option>
-                  <option value="pro">Pro</option>
-                  <option value="enterprise">Enterprise</option>
+                  {planOptions.map((plan) => (
+                    <option key={plan.code} value={plan.code}>
+                      {plan.name}
+                    </option>
+                  ))}
                 </select>
               </Field>
 

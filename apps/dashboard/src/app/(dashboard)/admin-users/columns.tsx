@@ -67,7 +67,8 @@ export const columns: ColumnDef<AdminUserRow>[] = [
   },
   {
     id: 'actions',
+    header: 'Permisos',
     cell: ({ row }) => <UserRowActions user={row.original} />,
-    size: 100,
+    size: 220,
   },
 ]

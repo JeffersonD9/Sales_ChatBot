@@ -35,7 +35,10 @@ const createSchema = z.object({
   name: z.string().min(2, 'Mínimo 2 caracteres').max(256),
   owner_phone: z.string().min(7).max(32),
   owner_email: z.string().email().optional(),
-  plan: z.enum(['starter', 'pro', 'enterprise']).default('starter'),
+  plan: z
+    .string()
+    .regex(/^[a-z0-9_-]+$/)
+    .default('basic'),
 })
 
 export async function POST(req: NextRequest) {

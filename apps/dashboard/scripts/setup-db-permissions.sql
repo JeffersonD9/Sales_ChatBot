@@ -37,6 +37,9 @@ TO dashboard_app;
 -- El panel puede crear y actualizar tenants
 GRANT INSERT, UPDATE ON tenants  TO dashboard_app;
 
+-- El panel gestiona precios y capacidades del catálogo de planes
+GRANT INSERT, UPDATE, DELETE ON plans TO dashboard_app;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Lo que dashboard_app NO puede:
 --   ✗ DROP / TRUNCATE / CREATE TABLE
