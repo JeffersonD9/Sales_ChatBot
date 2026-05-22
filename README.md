@@ -181,6 +181,31 @@ No correr migraciones desde esta app.
 
 ---
 
+## Schema y migraciones
+
+El runtime de la app no migra, pero el **CI/CD sí** — aplica SQL idempotente contra el Postgres del stack en cada deploy, antes de `docker compose up -d`.
+
+Pipeline:
+
+1. Editar el archivo correspondiente en `infra/postgres/`:
+   - `upgrade-platform-tenancy.sql` para nuevas tablas/columnas/índices/seeds del platform DB.
+   - `grants.sql` para permisos del rol `dashboard_app`.
+   - `tenant-init.sql` para schema base de tenants compartidos.
+   - `init.sql` se mantiene en paralelo para que nuevos bootstraps salgan correctos desde cero.
+2. Push a `main`.
+3. CI valida (`gh actions`): lint anti-destructivo + dry-run contra Postgres efímero + chequeo de idempotencia.
+4. CI ejecuta `infra/postgres/apply-upgrades.sh` en el VPS antes de `up -d`. Si el SQL falla, el deploy aborta sin tocar contenedores.
+
+Reglas duras:
+
+- Solo SQL idempotente: `IF NOT EXISTS`, `ON CONFLICT`, `ADD COLUMN ... DEFAULT ...`.
+- Toda columna `NOT NULL` nueva debe tener `DEFAULT` (o las filas existentes rompen).
+- Cambios destructivos (`DROP`, `TRUNCATE`, `ALTER COLUMN ... TYPE`, renames) están bloqueados por el lint del CI y deben pasar por `docs/runbook-db-migrations.md` con backup previo.
+
+Detalle completo: [`docs/runbook-db-migrations.md`](docs/runbook-db-migrations.md).
+
+---
+
 ## Roadmap corto
 
 1. Separar platform DB de tenant DB a nivel de pools.

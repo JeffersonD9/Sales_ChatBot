@@ -231,6 +231,67 @@ jobs:
           SKIP_ENV_VALIDATION: "1"
         run: pnpm build
 
+      # ── SQL safety net ────────────────────────────────────────────────────
+      # 1) Lint anti-destructivo: bloquea DROP/TRUNCATE/ALTER COLUMN TYPE en
+      #    los archivos que el CI aplica en cada deploy. Cambios destructivos
+      #    deben ir por runbook manual (docs/runbook-db-migrations.md).
+      - name: Lint SQL (no destructive ops)
+        if: needs.detect.outputs.db_changed == 'true'
+        run: |
+          set -e
+          files="infra/postgres/init.sql infra/postgres/upgrade-platform-tenancy.sql infra/postgres/tenant-init.sql infra/postgres/grants.sql"
+          # Patrones bloqueados (case-insensitive, ignorando comentarios -- y bloques /* */).
+          # Aceptamos DROP DEFAULT (no destructivo) y DROP CONSTRAINT IF EXISTS (revisable).
+          bad_pattern='\b(DROP[[:space:]]+(TABLE|SCHEMA|DATABASE|INDEX|COLUMN|TYPE|FUNCTION|VIEW|SEQUENCE|TRIGGER)|TRUNCATE|ALTER[[:space:]]+TABLE[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+ALTER[[:space:]]+COLUMN[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+TYPE)\b'
+          fail=0
+          for f in $files; do
+            [ -f "$f" ] || continue
+            # Quitar comentarios de línea para evitar falsos positivos.
+            filtered=$(sed 's/--.*$//' "$f")
+            if echo "$filtered" | grep -Eiq "$bad_pattern"; then
+              echo "❌ SQL destructivo detectado en $f:"
+              echo "$filtered" | grep -Ein "$bad_pattern" || true
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "Estos archivos se aplican automáticamente en producción. Operaciones destructivas requieren runbook manual con backup previo. Ver docs/runbook-db-migrations.md."
+            exit 1
+          fi
+          echo "✅ SQL clean (sin operaciones destructivas)."
+
+      # 2) Dry-run real: aplicamos los SQL contra el Postgres efímero del job
+      #    para atrapar errores de sintaxis/semántica antes de tocar prod.
+      - name: Dry-run SQL against ephemeral Postgres
+        if: needs.detect.outputs.db_changed == 'true'
+        env:
+          PGPASSWORD: ci-test-password-32-chars-ok-aaaa
+        run: |
+          set -euo pipefail
+          # El servicio postgres del job ya está corriendo (lo usa el bloque app_changed).
+          # Creamos las dos DBs y aplicamos los SQL en el mismo orden que apply-upgrades.sh.
+          psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE platform_dryrun;"
+          psql -h localhost -U app -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE tenant_dryrun;"
+
+          for f in infra/postgres/init.sql infra/postgres/upgrade-platform-tenancy.sql infra/postgres/grants.sql; do
+            [ -f "$f" ] || continue
+            echo "── applying $f → platform_dryrun"
+            psql -h localhost -U app -d platform_dryrun -v ON_ERROR_STOP=1 -f "$f"
+          done
+          if [ -f infra/postgres/tenant-init.sql ]; then
+            echo "── applying tenant-init.sql → tenant_dryrun"
+            psql -h localhost -U app -d tenant_dryrun -v ON_ERROR_STOP=1 -f infra/postgres/tenant-init.sql
+          fi
+
+          # Re-aplicamos una segunda vez para confirmar idempotencia.
+          echo "── re-applying for idempotency check"
+          for f in infra/postgres/init.sql infra/postgres/upgrade-platform-tenancy.sql infra/postgres/grants.sql; do
+            [ -f "$f" ] || continue
+            psql -h localhost -U app -d platform_dryrun -v ON_ERROR_STOP=1 -f "$f" >/dev/null
+          done
+          echo "✅ SQL dry-run OK (idempotente, sin errores)."
+
       - name: Validate production compose
         if: needs.detect.outputs.compose_changed == 'true'
         env:
@@ -513,6 +574,17 @@ jobs:
               smoke_ok=0
             else
               echo "[smoke] dashboard /login OK"
+            fi
+
+            # /plans existe y redirige al login (no auth → 307). Si la página
+            # rompe en runtime devuelve 500 → detectamos antes de que el user lo vea.
+            plans_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+              https://admin.jestsolution.tech/plans || echo "000")
+            if echo "$plans_code" | grep -qE '^(200|307)$'; then
+              echo "[smoke] /plans OK (status=$plans_code)"
+            else
+              echo "[smoke] /plans FALLÓ (status=$plans_code) — posible error en módulo de planes"
+              smoke_ok=0
             fi
 
             # POST a /api/auth/login con creds dummy: cualquier cosa MENOS 500.
