@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS plans (
   code varchar(50) PRIMARY KEY,
   name varchar(128) NOT NULL,
   tier varchar(32) NOT NULL DEFAULT 'basic',
+  monthly_price integer NOT NULL DEFAULT 0,
+  currency varchar(8) NOT NULL DEFAULT 'COP',
   ai_enabled boolean NOT NULL DEFAULT false,
   daily_message_limit integer NOT NULL DEFAULT 500,
   daily_ai_reply_limit integer NOT NULL DEFAULT 0,
@@ -54,6 +56,9 @@ CREATE TABLE IF NOT EXISTS plans (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS monthly_price integer NOT NULL DEFAULT 0;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS currency varchar(8) NOT NULL DEFAULT 'COP';
 
 CREATE TABLE IF NOT EXISTS tenant_entitlements (
   tenant_id uuid PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,

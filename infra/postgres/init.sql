@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS plans (
   code varchar(50) PRIMARY KEY,
   name varchar(128) NOT NULL,
   tier varchar(32) NOT NULL DEFAULT 'basic',
+  monthly_price integer NOT NULL DEFAULT 0,
+  currency varchar(8) NOT NULL DEFAULT 'COP',
   ai_enabled boolean NOT NULL DEFAULT false,
   daily_message_limit integer NOT NULL DEFAULT 500,
   daily_ai_reply_limit integer NOT NULL DEFAULT 0,

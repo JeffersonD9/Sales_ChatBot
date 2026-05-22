@@ -36,6 +36,7 @@ jobs:
       dashboard_changed: ${{ steps.detect.outputs.dashboard_changed }}
       nginx_changed: ${{ steps.detect.outputs.nginx_changed }}
       compose_changed: ${{ steps.detect.outputs.compose_changed }}
+      db_changed: ${{ steps.detect.outputs.db_changed }}
       any_changed: ${{ steps.detect.outputs.any_changed }}
 
     steps:
@@ -57,6 +58,7 @@ jobs:
           dashboard_changed=false
           nginx_changed=false
           compose_changed=false
+          db_changed=false
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET" != "auto" ]; then
             case "$TARGET" in
@@ -74,6 +76,7 @@ jobs:
                 dashboard_changed=true
                 nginx_changed=true
                 compose_changed=true
+                db_changed=true
                 ;;
             esac
           else
@@ -86,6 +89,7 @@ jobs:
                 dashboard_changed=true
                 nginx_changed=true
                 compose_changed=true
+                db_changed=true
                 base=""
               fi
             else
@@ -114,11 +118,16 @@ jobs:
               if echo "$changed_files" | grep -Eq '^(docker-compose\.yml|infra/compose/docker-compose\.prod\.yml)$'; then
                 compose_changed=true
               fi
+
+              # Cambios de schema/migraciones: corren apply-upgrades.sh sin rebuild de imágenes.
+              if echo "$changed_files" | grep -Eq '^infra/postgres/'; then
+                db_changed=true
+              fi
             fi
           fi
 
           any_changed=false
-          if [ "$app_changed" = true ] || [ "$dashboard_changed" = true ] || [ "$nginx_changed" = true ] || [ "$compose_changed" = true ]; then
+          if [ "$app_changed" = true ] || [ "$dashboard_changed" = true ] || [ "$nginx_changed" = true ] || [ "$compose_changed" = true ] || [ "$db_changed" = true ]; then
             any_changed=true
           fi
 
@@ -127,6 +136,7 @@ jobs:
             echo "dashboard_changed=$dashboard_changed"
             echo "nginx_changed=$nginx_changed"
             echo "compose_changed=$compose_changed"
+            echo "db_changed=$db_changed"
             echo "any_changed=$any_changed"
           } >> "$GITHUB_OUTPUT"
 
@@ -412,6 +422,21 @@ jobs:
           echo "$DOCKER_PASSWORD" | docker login "$REGISTRY_URL" -u "$DOCKER_USERNAME" --password-stdin
 
           COMPOSE="docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml --profile dashboard"
+
+          # ── Migraciones SQL idempotentes ─────────────────────────────────────
+          # Aplicamos cambios de schema ANTES de levantar nuevas imágenes para
+          # que el código nuevo encuentre las columnas/tablas que necesita.
+          # El script solo permite SQL idempotente (IF NOT EXISTS / ON CONFLICT).
+          # Cambios destructivos viven en docs/runbook-db-migrations.md.
+          if [ -f infra/postgres/apply-upgrades.sh ]; then
+            echo "── Aplicando migraciones SQL idempotentes ──"
+            if ! bash infra/postgres/apply-upgrades.sh; then
+              echo "❌ Migraciones SQL fallaron — abortando deploy SIN tocar contenedores."
+              exit 1
+            fi
+          else
+            echo "⚠️  infra/postgres/apply-upgrades.sh no existe o no es ejecutable; saltando migraciones."
+          fi
 
           # Snapshot de imágenes actuales por container (para rollback).
           prev_api_image=$(docker inspect -f '{{.Config.Image}}' whatsapp-saas-api 2>/dev/null || echo "")

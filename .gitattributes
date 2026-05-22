@@ -1,0 +1,3 @@
+# Scripts y SQL deben usar LF (se ejecutan en Linux dentro de contenedores).
+*.sh text eol=lf
+*.sql text eol=lf
