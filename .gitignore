@@ -70,6 +70,7 @@ docs/architecture/*
 !docs/architecture/docker-topology.md
 !docs/POST_DEPLOY_CHECKLIST.md
 !docs/runbook-db-migrations.md
+!docs/runbook-rotar-secrets.md
 API_TEST_REPORT.md
 ARCHITECTURE.md
 
