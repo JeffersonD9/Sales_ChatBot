@@ -1,5 +1,12 @@
 ﻿import { z } from 'zod'
 
+// Permite que una env var venga vacía ("") y la trate como undefined.
+// Sin esto, `.url().optional()` falla con "Invalid url" cuando .env tiene SENTRY_DSN= sin valor.
+const optionalUrl = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z.string().url().optional(),
+)
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3001),
@@ -26,8 +33,8 @@ const schema = z.object({
   PANEL_DOMAIN: z.string().default('admin.jestsolution.tech'),
   BOT_DOMAIN: z.string().default('bot.jestsolution.tech'),
 
-  REDIS_URL: z.string().url().optional(),
-  SENTRY_DSN: z.string().url().optional(),
+  REDIS_URL: optionalUrl,
+  SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().default('production'),
 })
 
