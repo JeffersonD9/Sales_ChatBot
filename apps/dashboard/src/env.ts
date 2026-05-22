@@ -12,6 +12,9 @@ const schema = z.object({
 
   DATABASE_URL: z.string().min(10, 'DATABASE_URL es requerido'),
   TENANT_DATABASE_URL: z.string().min(10, 'TENANT_DATABASE_URL es requerido'),
+  ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, 'ENCRYPTION_KEY debe ser 32 bytes en hex (64 chars)'),
 
   AUTH_SECRET: z
     .string()

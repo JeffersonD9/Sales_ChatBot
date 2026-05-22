@@ -38,7 +38,11 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/custom-flow-creator/
+!.claude/skills/custom-flow-creator/**
 
 # Docker volumes / data
 pgdata/
@@ -58,6 +62,7 @@ docs/
 !docs/
 docs/*
 !docs/integracion-360dialog.md
+!docs/integracion-meta-test.md
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/folder-structure.md

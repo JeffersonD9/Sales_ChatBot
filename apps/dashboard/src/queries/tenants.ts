@@ -130,7 +130,7 @@ export async function getTenantBySlug(slug: string): Promise<TenantDetail | unde
     created_at: row.created_at,
     verify_token: row.verify_token,
     phone_number_id: row.phone_number_id,
-    wa_token_encrypted: row.wa_token_encrypted,
+    wa_token_encrypted: row.wa_token_encrypted ? 'configured' : null,
     bot_config: row.bot_config as Record<string, unknown>,
     db_shard: row.db_shard,
     trial_ends_at: row.trial_ends_at,
@@ -188,6 +188,7 @@ export type UpdateTenantData = Partial<{
   billing_amount: number
   verify_token: string | null
   phone_number_id: string | null
+  wa_token_encrypted: string | null
 }>
 
 export async function updateTenant(slug: string, data: UpdateTenantData) {

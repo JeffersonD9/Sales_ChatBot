@@ -2,12 +2,14 @@
 
 import type { ProductRow } from '@/queries/products'
 import type { TenantDetail } from '@/queries/tenants'
+import { MessageCircle } from 'lucide-react'
 import { useState } from 'react'
 import { ConfigTab } from './config-tab'
 import { PersonaTab } from './persona-tab'
 import { ProductsTab } from './products-tab'
+import { WhatsappTab } from './whatsapp-tab'
 
-type Tab = 'products' | 'persona' | 'config'
+type Tab = 'products' | 'persona' | 'whatsapp' | 'config'
 
 type Props = {
   tenant: TenantDetail
@@ -39,6 +41,10 @@ export function TenantDetailClient({ tenant, products }: Props) {
         <TabButton active={activeTab === 'persona'} onClick={() => setActiveTab('persona')}>
           Persona IA
         </TabButton>
+        <TabButton active={activeTab === 'whatsapp'} onClick={() => setActiveTab('whatsapp')}>
+          <MessageCircle className="h-4 w-4" />
+          WhatsApp
+        </TabButton>
         <TabButton active={activeTab === 'config'} onClick={() => setActiveTab('config')}>
           Configuración
           <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground font-mono">
@@ -52,6 +58,7 @@ export function TenantDetailClient({ tenant, products }: Props) {
       {activeTab === 'persona' && (
         <PersonaTab tenantSlug={tenant.slug} botConfig={tenant.bot_config} products={products} />
       )}
+      {activeTab === 'whatsapp' && <WhatsappTab tenant={tenant} />}
       {activeTab === 'config' && (
         <ConfigTab tenantSlug={tenant.slug} botConfig={tenant.bot_config} />
       )}
