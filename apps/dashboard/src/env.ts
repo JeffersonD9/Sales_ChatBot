@@ -2,10 +2,7 @@
 
 // Permite que una env var venga vacía ("") y la trate como undefined.
 // Sin esto, `.url().optional()` falla con "Invalid url" cuando .env tiene SENTRY_DSN= sin valor.
-const optionalUrl = z.preprocess(
-  (v) => (v === '' ? undefined : v),
-  z.string().url().optional(),
-)
+const optionalUrl = z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional())
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
