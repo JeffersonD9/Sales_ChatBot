@@ -2,7 +2,7 @@ import { validateSession } from '@/lib/auth'
 import { err, forbidden, notFound, ok, serverError, unauthorized } from '@/lib/response'
 import { deletePlan, updatePlan } from '@/queries/plans'
 import type { NextRequest } from 'next/server'
-import { planFieldsSchema } from '../route'
+import { planFieldsSchema } from '../_schema'
 
 async function requireSuperadmin() {
   const user = await validateSession()
