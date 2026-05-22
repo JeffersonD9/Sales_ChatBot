@@ -1,0 +1,104 @@
+name: View VPS container logs
+
+# Workflow ad-hoc para inspeccionar logs de un contenedor del VPS sin
+# necesidad de SSH manual. Útil para diagnosticar webhooks Meta, errores
+# de runtime, healthchecks que no llegan a healthy, etc.
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Servicio del que ver logs
+        required: true
+        default: whatsapp
+        type: choice
+        options:
+          - whatsapp
+          - api
+          - worker
+          - dashboard
+          - nginx
+          - postgres
+          - redis
+      tail_lines:
+        description: Últimas N líneas a mostrar
+        required: true
+        default: '200'
+        type: string
+      grep_pattern:
+        description: Filtro opcional (regex extended). Vacío = todo.
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: view-logs-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  logs:
+    name: ${{ inputs.service }} — última ${{ inputs.tail_lines }} líneas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Trust deploy host
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          port="${DEPLOY_PORT:-22}"
+          ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Fetch logs
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          SERVICE: ${{ inputs.service }}
+          TAIL_LINES: ${{ inputs.tail_lines }}
+          GREP_PATTERN: ${{ inputs.grep_pattern }}
+        run: |
+          port="${DEPLOY_PORT:-22}"
+
+          remote_env="SERVICE=$(printf '%q' "$SERVICE")"
+          remote_env="$remote_env TAIL_LINES=$(printf '%q' "$TAIL_LINES")"
+          remote_env="$remote_env GREP_PATTERN=$(printf '%q' "$GREP_PATTERN")"
+
+          ssh -i ~/.ssh/deploy_key -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_env bash -s" <<'REMOTE'
+          set -uo pipefail
+
+          case "$SERVICE" in
+            whatsapp)  container=whatsapp-saas-whatsapp ;;
+            api)       container=whatsapp-saas-api ;;
+            worker)    container=whatsapp-saas-worker ;;
+            dashboard) container=jestsolution-dashboard ;;
+            nginx)     container=whatsapp-saas-nginx ;;
+            postgres)  container=whatsapp-saas-postgres ;;
+            redis)     container=whatsapp-saas-redis ;;
+            *)         container="$SERVICE" ;;
+          esac
+
+          echo "── Container: $container ──"
+          echo "── Estado actual ──"
+          docker inspect -f 'State: {{.State.Status}} | Health: {{.State.Health.Status}} | Started: {{.State.StartedAt}}' "$container" 2>/dev/null || echo "(no se pudo inspeccionar)"
+          echo ""
+          echo "── Últimas $TAIL_LINES líneas ──"
+
+          if [ -n "$GREP_PATTERN" ]; then
+            docker logs --tail "$TAIL_LINES" "$container" 2>&1 | grep -E "$GREP_PATTERN" || echo "(sin matches para: $GREP_PATTERN)"
+          else
+            docker logs --tail "$TAIL_LINES" "$container" 2>&1
+          fi
+          REMOTE
