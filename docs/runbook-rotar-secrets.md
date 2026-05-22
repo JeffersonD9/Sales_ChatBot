@@ -3,22 +3,39 @@
 Cómo cambiar un secret sensible (`META_APP_SECRET`, `ENCRYPTION_KEY`, etc.) sin
 SSH manual al VPS, con histórico/rollback y sin que el value quede en logs.
 
-## Flujo estándar (rotación)
+## Filosofía
+
+**Steady state:** los secrets viven SOLO en el `.env` del VPS. NO en GitHub
+Actions Secrets de forma permanente — eso es superficie de ataque innecesaria.
+
+GitHub Actions se usa de paso, **solo durante la operación de rotación**.
+El secret se sube → se aplica → se borra. Tres pasos, dos minutos.
+
+## Flujo de rotación (set → run → unset)
 
 ```bash
-# 1) Actualizar el valor del secret en GitHub Actions.
+# 1) Subir el nuevo valor a GH Actions (TEMPORAL).
 echo "NUEVO_VALOR_AQUI" | gh secret set META_APP_SECRET
 
-# 2) Disparar el workflow ad-hoc que lo aplica al .env del VPS y reinicia
-#    SOLO el contenedor afectado (sin tocar el resto del stack).
+# 2) Disparar el workflow que lo aplica al .env del VPS y reinicia SOLO
+#    el contenedor afectado (sin tocar el resto del stack).
 gh workflow run apply-secret.yml \
   -f var_name=META_APP_SECRET \
   -f restart_service=whatsapp
 
-# 3) Verificar que el contenedor llegó a healthy.
-gh run list --workflow=apply-secret.yml --limit 1
-gh run watch $(gh run list --workflow=apply-secret.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+# 3) Esperar que termine y verificar healthy.
+sleep 8
+RUN_ID=$(gh run list --workflow=apply-secret.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$RUN_ID" --exit-status
+
+# 4) BORRAR el secret de GH (vuelve al steady state).
+gh secret delete META_APP_SECRET
 ```
+
+El paso 4 es **obligatorio** — si lo olvidás, el secret queda en GH cuando no
+hace falta. El workflow está diseñado para fallar gracefully si el secret no
+existe (`if [ -z "$VAR_VALUE" ]; then exit 1`), así que dejarlo borrado entre
+rotaciones es seguro.
 
 ## Qué hace el workflow internamente
 
