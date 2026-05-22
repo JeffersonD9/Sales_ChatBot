@@ -489,6 +489,21 @@ jobs:
             else
               echo "[smoke] dashboard /login OK"
             fi
+
+            # POST a /api/auth/login con creds dummy: cualquier cosa MENOS 500.
+            # 400 (validación) o 401 (creds inválidas) confirma que la ruta corre y
+            # llega a DB. 500 = handler reventó (típico schema mismatch, lib nativa
+            # rota, env vars faltantes). Esto es lo que el smoke anterior no veía.
+            login_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+              -X POST -H 'Content-Type: application/json' \
+              -d '{"username":"__smoke__","password":"__smoke__"}' \
+              https://admin.jestsolution.tech/api/auth/login || echo "000")
+            if [ "$login_code" = "500" ] || [ "$login_code" = "000" ]; then
+              echo "[smoke] POST /api/auth/login devolvió $login_code (esperado 400/401) — auth runtime ROTO"
+              smoke_ok=0
+            else
+              echo "[smoke] POST /api/auth/login OK (status=$login_code)"
+            fi
           fi
 
           if [ "$smoke_ok" -ne 1 ]; then

@@ -1,8 +1,12 @@
 import { validateSession } from '@/lib/auth'
-import { ok, unauthorized } from '@/lib/response'
+import { ok, serverError, unauthorized } from '@/lib/response'
 
 export async function GET() {
-  const user = await validateSession()
-  if (!user) return unauthorized()
-  return ok(user)
+  try {
+    const user = await validateSession()
+    if (!user) return unauthorized()
+    return ok(user)
+  } catch (e) {
+    return serverError(e, 'auth.me')
+  }
 }

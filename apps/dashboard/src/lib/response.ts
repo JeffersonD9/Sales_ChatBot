@@ -26,7 +26,20 @@ export function notFound(resource = 'Recurso') {
   return err(`${resource} no encontrado`, 404)
 }
 
-export function serverError(e: unknown) {
-  console.error('[API Error]', e)
+export function serverError(e: unknown, context?: string) {
+  // Loguea de forma explícita name/message/code/stack para que el mensaje real
+  // sobreviva a la minificación de Next.js standalone + tree-shaking de Sentry.
+  // Sin esto, en prod aparece "⨯ Error:" sin texto y es imposible diagnosticar.
+  const tag = context ? `[API Error:${context}]` : '[API Error]'
+  if (e instanceof Error) {
+    console.error(tag, {
+      name: e.name,
+      message: e.message,
+      code: (e as { code?: string }).code,
+      stack: e.stack,
+    })
+  } else {
+    console.error(tag, e)
+  }
   return err('Error interno del servidor', 500)
 }
