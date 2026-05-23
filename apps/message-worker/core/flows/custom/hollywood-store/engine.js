@@ -142,8 +142,8 @@ async function iniciarMayorista(phone, session, tenant) {
   await sendInteractiveButtons(phone,
     '🎧 ¿Quieres conocer la calidad de nuestras pantalonetas?',
     [
-      { id: 'MAY_AUDIO_SI', title: '🎧 Sí, quiero escuchar' },
-      { id: 'MAY_AUDIO_NO', title: '➡️ Continuar sin audio' },
+      { id: 'MAY_AUDIO_SI', title: 'Sí, escuchar' },
+      { id: 'MAY_AUDIO_NO', title: 'Continuar sin audio' },
     ],
     tenant
   );
@@ -162,9 +162,9 @@ async function handleMayAudio(phone, session, txt, id, tenant) {
   await sendInteractiveButtons(phone,
     '📸 ¿Deseas ver más fotos del catálogo?',
     [
-      { id: 'PHOTOS_LINK',  title: '🔗 Ver el link del catálogo' },
-      { id: 'PHOTOS_TODAS', title: '📸 Que me manden las fotos'  },
-      { id: 'PHOTOS_NO',    title: '➡️ Ir al pedido'             },
+      { id: 'PHOTOS_LINK',  title: 'Ver el catálogo'      },
+      { id: 'PHOTOS_TODAS', title: 'Mándame las fotos'    },
+      { id: 'PHOTOS_NO',    title: 'Ir al pedido'         },
     ],
     tenant
   );
@@ -243,9 +243,9 @@ async function handleDetTalla(phone, session, txt, id, tenant) {
   await sendInteractiveButtons(phone,
     '¿Deseas ver más fotos del catálogo completo?',
     [
-      { id: 'PHOTOS_LINK',  title: '🔗 Ver el link del catálogo' },
-      { id: 'PHOTOS_TODAS', title: '📸 Que me manden las fotos'  },
-      { id: 'PHOTOS_NO',    title: '➡️ Ir al pedido'             },
+      { id: 'PHOTOS_LINK',  title: 'Ver el catálogo'      },
+      { id: 'PHOTOS_TODAS', title: 'Mándame las fotos'    },
+      { id: 'PHOTOS_NO',    title: 'Ir al pedido'         },
     ],
     tenant
   );
@@ -273,8 +273,8 @@ async function handleDetPhotos(phone, session, txt, id, tenant) {
   await sendInteractiveButtons(phone,
     '🎧 ¿Quieres conocer la calidad de nuestras pantalonetas?',
     [
-      { id: 'DET_AUDIO_SI', title: '🎧 Sí, quiero escuchar' },
-      { id: 'DET_AUDIO_NO', title: '➡️ Ir al pedido'        },
+      { id: 'DET_AUDIO_SI', title: 'Sí, escuchar' },
+      { id: 'DET_AUDIO_NO', title: 'Ir al pedido'  },
     ],
     tenant
   );
@@ -393,7 +393,7 @@ async function handleOrderAddr(phone, session, txt, tenant) {
       {
         title: 'Método de pago',
         rows: [
-          { id: 'PAY_NEQUI',  title: '📲 Nequi / Bancolombia / Daviplata', description: 'Transferencia digital' },
+          { id: 'PAY_NEQUI',  title: 'Nequi / Bancolombia', description: 'Transferencia digital (también Daviplata)' },
           { id: 'PAY_CONTRA', title: '💵 Contraentrega', description: 'Pagas en efectivo al recibir' },
           { id: 'PAY_LINK',   title: '💳 Link de pago', description: 'Tarjeta débito / crédito' },
           { id: 'PAY_PUNTO',  title: '🏪 Punto físico', description: 'Pago en tienda Hollywood Store' },
@@ -491,8 +491,8 @@ async function sendMainMenu(phone, session, tenant) {
   await sendInteractiveButtons(phone,
     `${greeting}\n\n*¿Eres cliente MAYORISTA o DETAL?*`,
     [
-      { id: 'OPT_MAYORISTA', title: '1️⃣ MAYORISTA (+12 und.)' },
-      { id: 'OPT_DETAL',     title: '2️⃣ DETAL (unidades)'     },
+      { id: 'OPT_MAYORISTA', title: 'Mayorista (12+ und)' },
+      { id: 'OPT_DETAL',     title: 'Detal (unidades)'    },
     ],
     tenant
   );
