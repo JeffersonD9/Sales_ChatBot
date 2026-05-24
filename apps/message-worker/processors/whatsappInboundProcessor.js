@@ -35,12 +35,74 @@ function msSince(isoDate) {
   return Number.isNaN(parsed) ? null : Date.now() - parsed;
 }
 
+function templateSignalFromStatus(status) {
+  const type = String(status.type || '').toLowerCase();
+  const rawEvent = status.event || status.status || status.reason;
+  const event = String(rawEvent || '').toUpperCase();
+
+  if (type.includes('template') || [
+    'APPROVED',
+    'REJECTED',
+    'PAUSED',
+    'DISABLED',
+    'FLAGGED',
+    'PENDING',
+    'LIMIT_EXCEEDED',
+    'LOCKED',
+    'REINSTATED',
+  ].includes(event)) {
+    return event || type.toUpperCase();
+  }
+
+  return null;
+}
+
+async function processWebhookStatuses({ tenantSlug, tenant, statuses = [], summary }) {
+  for (const status of statuses) {
+    summary.statusesProcessed += 1;
+
+    const templateSignal = templateSignalFromStatus(status);
+    if (templateSignal) {
+      summary.templateSignals += 1;
+      const level = ['REJECTED', 'PAUSED', 'DISABLED', 'FLAGGED', 'LIMIT_EXCEEDED'].includes(templateSignal)
+        ? 'warn'
+        : 'info';
+      logger[level]({
+        metric: 'worker.webhook.template_signal',
+        tenantSlug,
+        templateName: status.template_name || status.templateName || status.name,
+        templateId: status.template_id || status.templateId,
+        language: status.template_language || status.language,
+        signal: templateSignal,
+        reason: status.reason,
+        description: status.description || status.information,
+      }, '[Processor] Senal de template recibida por webhook');
+    }
+
+    if (status.status === 'failed' && status.errors?.length) {
+      const phone = status.recipient_id || status.recipientId || 'unknown';
+      const err = { response: { data: { error: status.errors[0] } } };
+      const action = await antiBanGuard.handleApiError(err, tenant, phone);
+      logger.warn({
+        metric: 'worker.webhook.status_failed',
+        tenantSlug,
+        phone,
+        messageId: status.id,
+        code: status.errors[0]?.code,
+        antiBanAction: action?.action,
+      }, '[Processor] Status failed procesado desde webhook');
+    }
+  }
+}
+
 async function dispatch(tenantSlug, webhookBody) {
   const summary = {
     messagesTotal: 0,
     messagesProcessed: 0,
     messagesDuplicated: 0,
     messagesFailed: 0,
+    statusesProcessed: 0,
+    templateSignals: 0,
   };
 
   if (webhookBody.object !== 'whatsapp_business_account') return summary;
@@ -53,7 +115,22 @@ async function dispatch(tenantSlug, webhookBody) {
 
   for (const entry of webhookBody.entry || []) {
     for (const change of entry.changes || []) {
-      if (change.field !== 'messages') continue;
+      if (change.field !== 'messages') {
+        await processWebhookStatuses({
+          tenantSlug,
+          tenant,
+          statuses: change.value ? [{ ...change.value, type: change.field }] : [],
+          summary,
+        });
+        continue;
+      }
+
+      await processWebhookStatuses({
+        tenantSlug,
+        tenant,
+        statuses: change.value?.statuses || [],
+        summary,
+      });
 
       for (const message of change.value?.messages || []) {
         const startedAt = process.hrtime.bigint();

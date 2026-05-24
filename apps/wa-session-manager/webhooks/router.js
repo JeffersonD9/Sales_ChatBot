@@ -5,7 +5,28 @@ import loggerModule from '@whatsapp-saas/logger';
 import { validateSlug, ipRateLimit } from '@whatsapp-saas/http-runtime/security.js';
 
 const tenantLoader = platformData.tenantLoader;
+const tenantRepository = platformData.tenantRepository;
 const { logger } = loggerModule;
+
+function looksLikeRealMetaPayload(body) {
+  if (!body || typeof body !== 'object') return false;
+  if (body.object !== 'whatsapp_business_account') return false;
+  return Array.isArray(body.entry) && body.entry.length > 0;
+}
+
+async function maybeMarkMetaLive(slug, tenant, body) {
+  if (tenant?.meta_live === true) return;
+  if (!looksLikeRealMetaPayload(body)) return;
+  try {
+    const updated = await tenantRepository.update(slug, { meta_live: true });
+    if (updated) {
+      tenantLoader.invalidate(slug);
+      logger.info({ tenantSlug: slug }, '[Webhook] meta_live activado por primer payload real');
+    }
+  } catch (err) {
+    logger.error({ tenantSlug: slug, err: err.message }, '[Webhook] Error marcando meta_live');
+  }
+}
 
 const router = express.Router({ mergeParams: true });
 
@@ -90,6 +111,7 @@ router.post('/:slug', validateSlug, async (req, res) => {
     } catch (err) {
       logger.error({ tenantSlug: slug, err: err.message }, '[Webhook] Error encolando inbound');
     }
+    await maybeMarkMetaLive(slug, tenant, req.body);
   });
 });
 
