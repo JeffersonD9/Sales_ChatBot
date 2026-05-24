@@ -9,9 +9,22 @@ WhatsApp Sales Agent SaaS multi-tenant. La arquitectura objetivo separa platafor
 Docs profundos:
 - `DEPLOY.md` — guia completa de despliegue
 - `PROJECT_STRUCTURE.md` — layout detallado del repo
+- `docs/meta-whatsapp-template-compliance-2026-05.md` - reglas obligatorias para templates Meta, webhooks de estado/calidad y nuevos custom flows WhatsApp
 - `docs/PLAN_MAESTRO.md`, `docs/runbook-*.md`, `docs/architecture/` — planes y runbooks
 
 ---
+
+## Regla obligatoria: Meta WhatsApp templates y custom flows
+
+Antes de crear o modificar un flow custom en `apps/message-worker/core/flows/custom/`, leer y aplicar `docs/meta-whatsapp-template-compliance-2026-05.md`.
+
+Reglas duras:
+- No iniciar conversaciones fuera de la ventana de 24h sin template aprobado.
+- Usar categorias vigentes: `MARKETING`, `UTILITY`, `AUTHENTICATION` y mensajes `SERVICE` dentro de la ventana de 24h. No usar `TRANSACTIONAL` en docs o flows nuevos.
+- No mezclar marketing en templates o pasos utility.
+- Todo flow debe tener salida humana, opt-out respetado, copy corto y maximo 3 mensajes salientes consecutivos sin respuesta.
+- Todo outbound debe pasar por los helpers `sendText`, `sendImage`, `sendInteractiveButtons`, `sendInteractiveList` o `sendAudio` para que corra `antiBanGuard`.
+- Los webhooks de `failed`, template pausado/deshabilitado/rechazado y quality degradado son senales operativas para pausar/reducir envios, no solo logs.
 
 ## Quick orientation
 

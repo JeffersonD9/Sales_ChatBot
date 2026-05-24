@@ -63,6 +63,7 @@ docs/
 docs/*
 !docs/integracion-360dialog.md
 !docs/integracion-meta-test.md
+!docs/meta-whatsapp-template-compliance-2026-05.md
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/folder-structure.md
