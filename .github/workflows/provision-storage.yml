@@ -89,6 +89,19 @@ jobs:
           git checkout "$DEPLOY_BRANCH"
           git pull --ff-only origin "$DEPLOY_BRANCH"
 
+          # Garantiza las 3 vars de media en .env (no-secretas). Idempotente:
+          # solo agrega si faltan, nunca sobrescribe un valor existente.
+          if [ -f .env ]; then
+            cp .env ".env.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+            ensure_var() {
+              grep -qE "^$1=" .env || printf '%s=%s\n' "$1" "$2" >> .env
+            }
+            ensure_var CDN_DOMAIN cdn.jestsolution.tech
+            ensure_var MEDIA_STORAGE_BASE_PATH /var/whatsapp-saas/media
+            ensure_var MEDIA_STORAGE_PUBLIC_BASE_URL https://cdn.jestsolution.tech
+            echo "[provision] vars de media aseguradas en .env"
+          fi
+
           # OWNER_PHONE y ADMIN_API_* salen del .env de prod (no se duplican en GH).
           OWNER_PHONE=$(grep -E '^OWNER_PHONE=' .env | head -1 | cut -d= -f2- || true)
           ADMIN_API_URL=$(grep -E '^STORAGE_ALERT_URL=' .env | head -1 | cut -d= -f2- || true)
