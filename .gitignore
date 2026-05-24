@@ -47,6 +47,8 @@ Thumbs.db
 # Docker volumes / data
 pgdata/
 redisdata/
+runtime/media/
+media-storage/
 
 # Tests
 tests/
@@ -56,6 +58,8 @@ tests/*
 !tests/unit/
 !tests/unit/integrations/
 !tests/unit/integrations/whatsappSender.test.js
+!tests/unit/media/
+!tests/unit/media/*.test.js
 
 # Docs internos
 docs/
@@ -64,6 +68,7 @@ docs/*
 !docs/integracion-360dialog.md
 !docs/integracion-meta-test.md
 !docs/meta-whatsapp-template-compliance-2026-05.md
+!docs/storage-vps-setup.md
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/folder-structure.md

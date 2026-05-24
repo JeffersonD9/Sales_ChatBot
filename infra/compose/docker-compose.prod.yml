@@ -291,6 +291,11 @@ services:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
       # ADMIN_DOMAIN solo requerido cuando el perfil `dashboard` está activo
       ADMIN_DOMAIN: ${ADMIN_DOMAIN:-}
+      # CDN_DOMAIN sirve los medios estáticos (volumen media_data). Opcional.
+      # Si está vacío, el template media-cdn no se activa (server_name vacío
+      # rompe nginx → si no vas a usar CDN, quita media-cdn.conf.template del
+      # Dockerfile de nginx).
+      CDN_DOMAIN: ${CDN_DOMAIN:-}
     ports:
       - "80:80"
       - "443:443"

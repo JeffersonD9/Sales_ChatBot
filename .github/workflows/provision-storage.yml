@@ -1,0 +1,114 @@
+name: Provision media storage (VPS)
+
+# Workflow ad-hoc e IDEMPOTENTE para preparar el host del media storage:
+# crea MEDIA_ROOT + _quarantine, instala scripts de mantenimiento y crons
+# (disk-alert / cleanup / backup). No toca contenedores ni reinicia nada.
+#
+# Reejecutable cuantas veces haga falta. Tras correrlo, el deploy normal
+# (deploy.yml) ya recoge CDN_DOMAIN del .env y emite el cert SAN.
+
+on:
+  workflow_dispatch:
+    inputs:
+      alert_threshold:
+        description: '% disco para alerta WARN'
+        required: true
+        default: '80'
+        type: string
+      critical_threshold:
+        description: '% disco para alerta CRÍTICA'
+        required: true
+        default: '90'
+        type: string
+      backup_retention_days:
+        description: 'Días de retención de backups locales'
+        required: true
+        default: '7'
+        type: string
+      rclone_remote:
+        description: 'Remoto rclone para backup (opcional, ej gdrive:wa-saas/media)'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: provision-storage-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    name: Provision storage host
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Trust deploy host
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          port="${DEPLOY_PORT:-22}"
+          ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run provisioner on VPS
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+          ALERT_THRESHOLD: ${{ inputs.alert_threshold }}
+          CRITICAL_THRESHOLD: ${{ inputs.critical_threshold }}
+          BACKUP_RETENTION_DAYS: ${{ inputs.backup_retention_days }}
+          RCLONE_REMOTE: ${{ inputs.rclone_remote }}
+        run: |
+          port="${DEPLOY_PORT:-22}"
+
+          remote_env="DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH")"
+          remote_env="$remote_env DEPLOY_BRANCH=$(printf '%q' "$DEPLOY_BRANCH")"
+          remote_env="$remote_env ALERT_THRESHOLD=$(printf '%q' "$ALERT_THRESHOLD")"
+          remote_env="$remote_env CRITICAL_THRESHOLD=$(printf '%q' "$CRITICAL_THRESHOLD")"
+          remote_env="$remote_env BACKUP_RETENTION_DAYS=$(printf '%q' "$BACKUP_RETENTION_DAYS")"
+          remote_env="$remote_env RCLONE_REMOTE=$(printf '%q' "$RCLONE_REMOTE")"
+
+          ssh -i ~/.ssh/deploy_key -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_env bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          cd "$DEPLOY_PATH"
+          git fetch origin "$DEPLOY_BRANCH"
+          git checkout "$DEPLOY_BRANCH"
+          git pull --ff-only origin "$DEPLOY_BRANCH"
+
+          # OWNER_PHONE y ADMIN_API_* salen del .env de prod (no se duplican en GH).
+          OWNER_PHONE=$(grep -E '^OWNER_PHONE=' .env | head -1 | cut -d= -f2- || true)
+          ADMIN_API_URL=$(grep -E '^STORAGE_ALERT_URL=' .env | head -1 | cut -d= -f2- || true)
+          ADMIN_API_TOKEN=$(grep -E '^STORAGE_ALERT_TOKEN=' .env | head -1 | cut -d= -f2- || true)
+
+          sudo env \
+            MEDIA_ROOT=/var/whatsapp-saas/media \
+            ALERT_THRESHOLD="$ALERT_THRESHOLD" \
+            CRITICAL_THRESHOLD="$CRITICAL_THRESHOLD" \
+            BACKUP_RETENTION_DAYS="$BACKUP_RETENTION_DAYS" \
+            RCLONE_REMOTE="$RCLONE_REMOTE" \
+            OWNER_PHONE="$OWNER_PHONE" \
+            ADMIN_API_URL="$ADMIN_API_URL" \
+            ADMIN_API_TOKEN="$ADMIN_API_TOKEN" \
+            bash infra/storage/host-scripts/provision-storage-host.sh
+
+          echo "── Verificación ──"
+          ls -la /var/whatsapp-saas/media
+          echo ""
+          cat /etc/cron.d/whatsapp-saas-storage
+          echo ""
+          df -h /var/whatsapp-saas/media | tail -1
+          REMOTE

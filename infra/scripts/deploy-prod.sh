@@ -102,13 +102,14 @@ else
   ok ".env creado y respaldado en $BACKUP_DIR"
 fi
 
-# Cargar DOMAIN/ADMIN_DOMAIN/CERTBOT_EMAIL del .env
+# Cargar DOMAIN/ADMIN_DOMAIN/CDN_DOMAIN/CERTBOT_EMAIL del .env
 DOMAIN=$(grep -E '^DOMAIN=' .env | head -1 | cut -d= -f2-)
 ADMIN_DOMAIN=$(grep -E '^ADMIN_DOMAIN=' .env | head -1 | cut -d= -f2-)
+CDN_DOMAIN=$(grep -E '^CDN_DOMAIN=' .env | head -1 | cut -d= -f2-)
 CERTBOT_EMAIL=$(grep -E '^CERTBOT_EMAIL=' .env | head -1 | cut -d= -f2-)
 [ -n "$DOMAIN" ] || die "DOMAIN no definido en .env"
 [ -n "$CERTBOT_EMAIL" ] || die "CERTBOT_EMAIL no definido en .env"
-log "DOMAIN=$DOMAIN  ADMIN_DOMAIN=${ADMIN_DOMAIN:-<none>}  EMAIL=$CERTBOT_EMAIL"
+log "DOMAIN=$DOMAIN  ADMIN_DOMAIN=${ADMIN_DOMAIN:-<none>}  CDN_DOMAIN=${CDN_DOMAIN:-<none>}  EMAIL=$CERTBOT_EMAIL"
 
 # ─── 2.5. Build de imágenes (idempotente; usa cache si nada cambió) ────────
 log "Build de imágenes (api/whatsapp/worker/nginx/dashboard)…"
@@ -157,12 +158,24 @@ fi
 CERT_BOT="certbot/conf/live/${DOMAIN}/fullchain.pem"
 need_bot_cert=0
 need_admin_cert=0
+need_cdn_cert=0
 [ -f "$CERT_BOT" ] || need_bot_cert=1
 if [ -n "$ADMIN_DOMAIN" ]; then
   [ -f "certbot/conf/live/${ADMIN_DOMAIN}/fullchain.pem" ] || need_admin_cert=1
 fi
+# CDN_DOMAIN va como SAN dentro del cert primario (${DOMAIN}). Si el cert ya
+# existe pero no contiene CDN_DOMAIN como SAN, hay que ampliarlo con --expand.
+if [ -n "$CDN_DOMAIN" ] && [ -f "$CERT_BOT" ]; then
+  if ! docker run --rm -v "$REPO_DIR/certbot/conf:/etc/letsencrypt:ro" \
+       certbot/certbot:latest certificates 2>/dev/null \
+       | grep -q "$CDN_DOMAIN"; then
+    need_cdn_cert=1
+  fi
+elif [ -n "$CDN_DOMAIN" ]; then
+  need_cdn_cert=1
+fi
 
-if [ "$need_bot_cert" -eq 1 ] || [ "$need_admin_cert" -eq 1 ]; then
+if [ "$need_bot_cert" -eq 1 ] || [ "$need_admin_cert" -eq 1 ] || [ "$need_cdn_cert" -eq 1 ]; then
   log "Faltan certs TLS — corriendo bootstrap Let's Encrypt…"
 
   # Parar nginx final si está corriendo (libera :80)
@@ -173,17 +186,19 @@ if [ "$need_bot_cert" -eq 1 ] || [ "$need_admin_cert" -eq 1 ]; then
   docker compose "${COMPOSE_FILES[@]}" "${PROFILE_TLS[@]}" up -d nginx-bootstrap
   sleep 5
 
-  # Emitir certs
+  # Emitir certs (SAN único bajo la carpeta de ${DOMAIN})
   CERT_DOMAINS=("-d" "$DOMAIN")
   [ -n "$ADMIN_DOMAIN" ] && CERT_DOMAINS+=("-d" "$ADMIN_DOMAIN")
+  [ -n "$CDN_DOMAIN" ]   && CERT_DOMAINS+=("-d" "$CDN_DOMAIN")
 
+  # --expand permite añadir SANs nuevos a un cert ya emitido sin error.
   docker run --rm \
     -v "$REPO_DIR/certbot/conf:/etc/letsencrypt" \
     -v "$REPO_DIR/certbot/www:/var/www/certbot" \
     certbot/certbot:latest certonly --webroot \
     --webroot-path=/var/www/certbot \
     --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email \
-    --non-interactive \
+    --non-interactive --expand \
     "${CERT_DOMAINS[@]}" || die "certbot falló"
 
   # Bajar bootstrap

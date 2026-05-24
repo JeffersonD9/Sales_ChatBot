@@ -1,0 +1,97 @@
+# CDN de medios — OPCIONAL.
+# Variable requerida: CDN_DOMAIN (ej: cdn.jestsolution.tech)
+#
+# Sirve los archivos almacenados en el bind /var/whatsapp-saas/media (volumen
+# `media_data` ya existente) como estáticos read-only.
+# Tenant-aware: /<tenant-slug>/{images,audios}/...
+#
+# El cert SAN del ${DOMAIN} cubre también ${CDN_DOMAIN} (deploy-prod.sh los
+# emite juntos). Si CDN_DOMAIN está vacío en el .env, el entrypoint
+# 15-optional-vhosts.sh elimina este template antes del envsubst, así que
+# el vhost simplemente no existe (nginx arranca sin problema).
+
+# Rate limit por IP para mitigar abuso del CDN (nivel http)
+limit_req_zone $binary_remote_addr zone=media_cdn:10m rate=100r/s;
+
+server {
+  listen 80;
+  server_name ${CDN_DOMAIN};
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}
+
+server {
+  listen 443 ssl;
+  http2  on;
+  server_name ${CDN_DOMAIN};
+
+  # SAN cert emitido junto con ${DOMAIN}
+  ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+  ssl_ciphers         ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5;
+  ssl_prefer_server_ciphers on;
+  ssl_session_cache   shared:SSL:10m;
+  ssl_session_timeout 1d;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Frame-Options          "DENY"    always;
+  add_header X-Content-Type-Options   "nosniff" always;
+  add_header Referrer-Policy          "no-referrer" always;
+  add_header Cross-Origin-Resource-Policy "cross-origin" always;
+
+  # Solo lectura. La app escribe; nginx sirve.
+  root /var/whatsapp-saas/media;
+
+  # Sin listado de directorios — exposición de inventario es leak.
+  autoindex off;
+
+  # Tamaño máximo de respuesta razonable; tope duro de archivos servidos.
+  client_max_body_size 0;
+
+  # Bloquear ejecución/interpretación de archivos peligrosos aunque alguien
+  # logre subir uno. Estos tipos se devuelven como 403.
+  location ~* \.(php|phtml|phps|pl|py|cgi|sh|jsp|asp|aspx)$ {
+    deny all;
+  }
+
+  # Ocultar dotfiles (.htaccess, .env, .git, etc.)
+  location ~ /\. {
+    deny all;
+  }
+
+  # Endpoint de salud (no expone fs)
+  location = /healthz {
+    access_log off;
+    return 200 "ok\n";
+    add_header Content-Type text/plain;
+  }
+
+  # /<tenant-slug>/... — el slug replica SLUG_RE de http-runtime/security.js
+  # (^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$ | ^[a-z0-9]$): 1–64 chars, sin guion
+  # inicial/final, sin guion bajo. Mantener en sync con esa fuente de verdad.
+  location ~ "^/(?<tenant>[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)/(?<rest>.+)$" {
+    limit_req zone=media_cdn burst=200 nodelay;
+
+    # Cache agresivo, contenido es immutable (nombres con hash/uuid).
+    expires 1y;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+
+    # Imágenes y audios: gzip OFF (ya están comprimidos).
+    gzip off;
+
+    # Sirve solo si existe físicamente; nunca redirige a app.
+    try_files /$tenant/$rest =404;
+  }
+
+  # Cualquier otra ruta no autorizada
+  location / {
+    return 404;
+  }
+}
