@@ -1,6 +1,6 @@
 import { validateSession } from '@/lib/auth'
 import { publishTenantConfigUpdated } from '@/lib/cache-events'
-import { mediaStorage } from '@/lib/media-storage'
+import { mediaClient, mediaConfigFlags } from '@/lib/media-storage'
 import { err, notFound, ok, serverError, unauthorized } from '@/lib/response'
 import { bulkCreateProducts } from '@/queries/products'
 import { getTenantBySlug } from '@/queries/tenants'
@@ -33,10 +33,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   try {
     const tenant = await getTenantBySlug(slug)
     if (!tenant) return notFound('Tenant')
-    const config = mediaStorage.normalizeMediaStorageConfig(tenant.bot_config)
+    const flags = mediaConfigFlags(tenant.bot_config)
     const products =
-      config.enabled && config.importProductsEnabled
-        ? await localizeProductImages(slug, parsed.data.products, config)
+      flags.enabled && flags.importProductsEnabled
+        ? await localizeProductImages(slug, parsed.data.products)
         : parsed.data.products
     const result = await bulkCreateProducts(tenant.id, products)
     if (result.inserted.length > 0) void publishTenantConfigUpdated(slug)
@@ -46,32 +46,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   }
 }
 
-async function localizeProductImages(
-  tenantSlug: string,
-  products: z.infer<typeof itemSchema>[],
-  config: Record<string, unknown> & { maxImageUploadMb?: number },
-) {
-  const adapter = mediaStorage.createLocalVpsStorageAdapter()
-  const maxBytes = Number(config.maxImageUploadMb ?? 8) * 1024 * 1024
+async function localizeProductImages(tenantSlug: string, products: z.infer<typeof itemSchema>[]) {
+  const urls = products
+    .map((p) => p.image_url)
+    .filter((u): u is string => !!u && /^https?:\/\//i.test(u))
+  if (urls.length === 0) return products
 
-  return Promise.all(
-    products.map(async (product) => {
-      if (!product.image_url || !/^https?:\/\//i.test(product.image_url)) return product
-      const res = await fetch(product.image_url)
-      if (!res.ok) throw new Error(`No se pudo descargar imagen de ${product.name}`)
-      const size = Number(res.headers.get('content-length') || 0)
-      if (size > maxBytes) throw new Error(`Imagen de ${product.name} supera el limite configurado`)
-      const buffer = Buffer.from(await res.arrayBuffer())
-      if (buffer.length > maxBytes) {
-        throw new Error(`Imagen de ${product.name} supera el limite configurado`)
-      }
-      const saved = await adapter.saveImage({
-        tenantSlug,
-        scope: 'products',
-        buffer,
-        config,
-      })
-      return { ...product, image_url: String(saved.url) }
-    }),
+  // api-core descarga, procesa y guarda; devuelve el mapeo url externa → local.
+  const { map } = await mediaClient.localize(tenantSlug, Array.from(new Set(urls)))
+
+  return products.map((product) =>
+    product.image_url && map[product.image_url]
+      ? { ...product, image_url: map[product.image_url] }
+      : product,
   )
 }

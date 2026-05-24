@@ -382,6 +382,9 @@ services:
       DB_CONSOLE_WRITES_ENABLED: ${DB_CONSOLE_WRITES_ENABLED:-false}
       PANEL_DOMAIN: ${ADMIN_DOMAIN}
       BOT_DOMAIN: ${DOMAIN}
+      # Media: el dashboard delega uploads a api-core (que monta media_data).
+      API_CORE_INTERNAL_URL: http://api:3000
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}

@@ -33,6 +33,10 @@ const schema = z.object({
   PANEL_DOMAIN: z.string().default('admin.jestsolution.tech'),
   BOT_DOMAIN: z.string().default('bot.jestsolution.tech'),
 
+  // Acceso interno a api-core para operaciones de media (storage vive allá).
+  API_CORE_INTERNAL_URL: z.string().url().default('http://api:3000'),
+  ADMIN_API_KEY: z.string().optional(),
+
   REDIS_URL: optionalUrl,
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().default('production'),

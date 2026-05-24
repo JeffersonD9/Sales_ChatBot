@@ -3,6 +3,7 @@ import healthRouter from './routes/healthRouter.js';
 import metricsRouter from '@whatsapp-saas/http-runtime/metrics.js';
 import adminTenantsRouter from './routes/adminTenantsRouter.js';
 import adminBillingRouter from './routes/adminBillingRouter.js';
+import adminMediaRouter from './routes/adminMediaRouter.js';
 import whatsappConfigRouter from './routes/whatsappConfigRouter.js';
 import { requireAdminKey } from './middleware/adminAuth.js';
 import { tenantApiCors } from '@whatsapp-saas/http-runtime/cors.js';
@@ -31,6 +32,7 @@ adminRouter.use(securityHeaders());
 adminRouter.use(requireAdminKey);
 adminRouter.use('/tenants', adminTenantsRouter);
 adminRouter.use('/billing', adminBillingRouter);
+adminRouter.use('/media', adminMediaRouter);
 app.use('/api/admin', adminRouter);
 
 // ── Fallback & error handlers ─────────────────────────────────────────────────
