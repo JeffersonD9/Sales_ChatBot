@@ -28,6 +28,14 @@ function getRedisUrl() {
   return process.env.REDIS_URL;
 }
 
+function getMediaStorageBasePath() {
+  return process.env.MEDIA_STORAGE_BASE_PATH;
+}
+
+function getMediaStoragePublicBaseUrl() {
+  return process.env.MEDIA_STORAGE_PUBLIC_BASE_URL;
+}
+
 function getRedisConnectionOptions() {
   const options = {
     retryStrategy: (times) => (times > 5 ? null : Math.min(times * 200, 2000)),
@@ -47,6 +55,8 @@ function getRedisConnectionOptions() {
 
 module.exports = {
   getDefaultTenantDatabaseUrl,
+  getMediaStorageBasePath,
+  getMediaStoragePublicBaseUrl,
   getPlatformDatabaseUrl,
   getRedisConnectionOptions,
   getRedisUrl,

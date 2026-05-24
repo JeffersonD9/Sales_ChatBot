@@ -8,6 +8,7 @@
 const axios = require('axios');
 const { logger } = require('@whatsapp-saas/logger');
 const antiBanGuard = require('../../../../packages/platform-data/src/integrations/whatsapp/antiBanGuard');
+const { createLocalVpsStorageAdapter } = require('../../../../packages/platform-data/src/media/storage');
 
 const META_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
 const D360_BASE_URL = process.env.D360_BASE_URL || 'https://waba-v2.360dialog.io';
@@ -57,6 +58,17 @@ function tokenForProvider(tenant, provider) {
     tenant?.botConfig?.d360_api_key ||
     (provider === '360dialog' ? process.env.D360_API_KEY : process.env.META_ACCESS_TOKEN)
   );
+}
+
+function resolveMediaUrl(url, tenant) {
+  try {
+    return createLocalVpsStorageAdapter().resolveFinalUrl(url);
+  } catch (err) {
+    if (process.env.MEDIA_STORAGE_PUBLIC_BASE_URL && process.env.MEDIA_STORAGE_BASE_PATH) {
+      logger.warn({ tenantSlug: tenant?.slug, err: err.message }, '[Sender] No se pudo resolver media local');
+    }
+    return url;
+  }
 }
 
 function requestForProvider(phone, payload, tenant) {
@@ -142,11 +154,12 @@ async function sendText(phone, text, tenant, options = {}) {
 }
 
 async function sendImage(phone, imageUrl, caption = '', tenant) {
+  const finalUrl = resolveMediaUrl(imageUrl, tenant);
   if (isDemoMode(tenant)) {
-    collectDemo({ type: 'image', url: imageUrl, caption });
+    collectDemo({ type: 'image', url: finalUrl, caption });
     return;
   }
-  return _callWhatsApp(phone, { type: 'image', image: { link: imageUrl, caption } }, tenant);
+  return _callWhatsApp(phone, { type: 'image', image: { link: finalUrl, caption } }, tenant);
 }
 
 async function sendInteractiveButtons(phone, bodyText, buttons, tenant) {
@@ -185,11 +198,12 @@ async function sendInteractiveList(phone, bodyText, buttonText, sections, tenant
 }
 
 async function sendAudio(phone, audioUrl, tenant) {
+  const finalUrl = resolveMediaUrl(audioUrl, tenant);
   if (isDemoMode(tenant)) {
-    collectDemo({ type: 'audio', url: audioUrl });
+    collectDemo({ type: 'audio', url: finalUrl });
     return;
   }
-  return _callWhatsApp(phone, { type: 'audio', audio: { link: audioUrl } }, tenant);
+  return _callWhatsApp(phone, { type: 'audio', audio: { link: finalUrl } }, tenant);
 }
 
 module.exports = {

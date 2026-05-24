@@ -137,6 +137,39 @@ function parseArgs() {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
+async function localizeProductImages(slug, tenant, products) {
+  const config = platformData.media.normalizeMediaStorageConfig(tenant.bot_config || tenant.botConfig || {});
+  if (!config.enabled || !config.importProductsEnabled) return products;
+
+  const adapter = platformData.media.createLocalVpsStorageAdapter();
+  const maxBytes = config.maxImageUploadMb * 1024 * 1024;
+  const localized = [];
+
+  for (const product of products) {
+    if (!product.image_url || !/^https?:\/\//i.test(product.image_url)) {
+      localized.push(product);
+      continue;
+    }
+
+    const res = await fetch(product.image_url);
+    if (!res.ok) throw new Error(`No se pudo descargar imagen de ${product.name}`);
+    const declaredSize = Number(res.headers.get('content-length') || 0);
+    if (declaredSize > maxBytes) {
+      throw new Error(`Imagen de ${product.name} supera el limite configurado`);
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length > maxBytes) {
+      throw new Error(`Imagen de ${product.name} supera el limite configurado`);
+    }
+
+    const saved = await adapter.saveImage({ tenantSlug: slug, scope: 'products', buffer, config });
+    localized.push({ ...product, image_url: saved.url });
+  }
+
+  return localized;
+}
+
 async function main() {
   const { slug, file, replace } = parseArgs();
 
@@ -171,7 +204,7 @@ async function main() {
     console.log(`📄 Filas encontradas: ${rows.length}`);
 
     // Validar todas las filas antes de insertar cualquiera
-    const valid   = [];
+    let valid   = [];
     const invalid = [];
 
     for (const row of rows) {
@@ -192,6 +225,8 @@ async function main() {
     }
 
     // Ejecutar en una transacción
+    valid = await localizeProductImages(slug, tenant, valid);
+
     const pool = await platformData.tenantDb.getPoolForTenant(tenant);
     const client = await pool.connect();
     try {

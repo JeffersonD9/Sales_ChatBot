@@ -2,8 +2,8 @@
 
 import type { ProductRow } from '@/queries/products'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { ImageUp, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -54,11 +54,15 @@ export function ProductDialog({ open, tenantSlug, product, onClose, onSaved }: P
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { emoji: '🛍️' },
   })
+
+  const imageUrl = watch('image_url')
 
   useEffect(() => {
     if (!open) return
@@ -197,6 +201,14 @@ export function ProductDialog({ open, tenantSlug, product, onClose, onSaved }: P
             />
           </Field>
 
+          <MediaImageUpload
+            tenantSlug={tenantSlug}
+            imageUrl={imageUrl ?? ''}
+            onUploaded={(url) =>
+              setValue('image_url', url, { shouldDirty: true, shouldValidate: true })
+            }
+          />
+
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -215,6 +227,91 @@ export function ProductDialog({ open, tenantSlug, product, onClose, onSaved }: P
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+function MediaImageUpload({
+  tenantSlug,
+  imageUrl,
+  onUploaded,
+}: {
+  tenantSlug: string
+  imageUrl: string
+  onUploaded: (url: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  async function upload(file: File) {
+    if (!file) return
+    setUploading(true)
+    const form = new FormData()
+    form.append('file', file)
+    form.append('type', 'image')
+    form.append('scope', 'products')
+
+    try {
+      const res = await fetch(`/api/admin/tenants/${tenantSlug}/media`, {
+        method: 'POST',
+        body: form,
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error ?? 'Error subiendo imagen')
+        return
+      }
+      onUploaded(json.data?.url ?? json.url)
+      toast.success('Imagen subida')
+    } catch {
+      toast.error('Error de conexion')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        className={`flex min-h-24 w-full items-center justify-center rounded-md border border-dashed border-input px-3 py-4 text-sm transition-colors ${
+          dragging ? 'bg-muted' : 'hover:bg-muted/40'
+        }`}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragging(false)
+          const file = e.dataTransfer.files?.[0]
+          if (file) void upload(file)
+        }}
+      >
+        <span className="flex items-center gap-2 text-muted-foreground">
+          <ImageUp className="h-4 w-4" />
+          {uploading ? 'Subiendo...' : 'Subir imagen a la VPS'}
+        </span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) void upload(file)
+          e.currentTarget.value = ''
+        }}
+      />
+      {imageUrl && (
+        <div className="overflow-hidden rounded-md border border-border">
+          <img src={imageUrl} alt="" className="h-32 w-full object-cover" />
+        </div>
+      )}
     </div>
   )
 }

@@ -50,6 +50,22 @@ const operationalConfigSchema = z.object({
   catalog_link_mayorista: z.string().url().max(512).optional().or(z.literal('')),
   catalog_link_detal: z.string().url().max(512).optional().or(z.literal('')),
   talla_images_count: tallaImagesCountSchema.optional(),
+  media_storage: z
+    .object({
+      enabled: z.boolean().optional(),
+      importProductsEnabled: z.boolean().optional(),
+      imageMaxWidth: z.number().int().min(64).max(4096).optional(),
+      outputFormat: z.enum(['jpeg', 'webp', 'original']).optional(),
+      quality: z.number().int().min(1).max(100).optional(),
+      generateThumbnail: z.boolean().optional(),
+      thumbnailWidth: z.number().int().min(32).max(2048).optional(),
+      preserveExif: z.boolean().optional(),
+      maxImageUploadMb: z.number().int().min(1).max(100).optional(),
+      maxAudioUploadMb: z.number().int().min(1).max(200).optional(),
+      allowedImageFormats: z.array(z.enum(['jpg', 'png', 'webp'])).optional(),
+      allowedAudioFormats: z.array(z.enum(['mp3', 'ogg', 'm4a', 'opus'])).optional(),
+    })
+    .optional(),
 })
 
 const schema = z.union([

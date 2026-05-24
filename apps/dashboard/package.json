@@ -26,6 +26,7 @@
     "react-dom": "19.1.0",
     "drizzle-orm": "0.43.1",
     "pg": "8.13.3",
+    "sharp": "0.34.5",
     "@node-rs/argon2": "2.0.0",
     "@sentry/nextjs": "^10.53.1",
     "nanoid": "5.1.5",

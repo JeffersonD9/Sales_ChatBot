@@ -62,6 +62,20 @@ const schema = z.object({
       XXXL: z.coerce.number().int().min(0).optional(),
     })
     .optional(),
+  media_storage: z.object({
+    enabled: z.boolean(),
+    importProductsEnabled: z.boolean(),
+    imageMaxWidth: z.coerce.number().int().min(64).max(4096),
+    outputFormat: z.enum(['jpeg', 'webp', 'original']),
+    quality: z.coerce.number().int().min(1).max(100),
+    generateThumbnail: z.boolean(),
+    thumbnailWidth: z.coerce.number().int().min(32).max(2048),
+    preserveExif: z.boolean(),
+    maxImageUploadMb: z.coerce.number().int().min(1).max(100),
+    maxAudioUploadMb: z.coerce.number().int().min(1).max(200),
+    allowedImageFormats: z.array(z.enum(['jpg', 'png', 'webp'])).min(1),
+    allowedAudioFormats: z.array(z.enum(['mp3', 'ogg', 'm4a', 'opus'])).min(1),
+  }),
 })
 
 type FormData = z.infer<typeof schema>
@@ -144,10 +158,16 @@ function Toggle({
   )
 }
 
+function toggleArrayValue<T extends string>(values: T[], value: T, checked: boolean) {
+  if (checked) return Array.from(new Set([...values, value]))
+  return values.filter((item) => item !== value)
+}
+
 export function ConfigTab({ tenantSlug, botConfig }: Props) {
   const router = useRouter()
 
   const tallaCount = botConfig.talla_images_count as Record<string, number> | undefined
+  const mediaStorage = (botConfig.media_storage as Record<string, unknown> | undefined) ?? {}
 
   const {
     register,
@@ -180,11 +200,34 @@ export function ConfigTab({ tenantSlug, botConfig }: Props) {
         XXL: tallaCount?.XXL ?? 0,
         XXXL: tallaCount?.XXXL ?? 0,
       },
+      media_storage: {
+        enabled: (mediaStorage.enabled as boolean | undefined) ?? false,
+        importProductsEnabled: (mediaStorage.importProductsEnabled as boolean | undefined) ?? false,
+        imageMaxWidth: (mediaStorage.imageMaxWidth as number | undefined) ?? 1280,
+        outputFormat:
+          (mediaStorage.outputFormat as 'jpeg' | 'webp' | 'original' | undefined) ?? 'jpeg',
+        quality: (mediaStorage.quality as number | undefined) ?? 82,
+        generateThumbnail: (mediaStorage.generateThumbnail as boolean | undefined) ?? false,
+        thumbnailWidth: (mediaStorage.thumbnailWidth as number | undefined) ?? 320,
+        preserveExif: (mediaStorage.preserveExif as boolean | undefined) ?? false,
+        maxImageUploadMb: (mediaStorage.maxImageUploadMb as number | undefined) ?? 8,
+        maxAudioUploadMb: (mediaStorage.maxAudioUploadMb as number | undefined) ?? 16,
+        allowedImageFormats: (mediaStorage.allowedImageFormats as
+          | Array<'jpg' | 'png' | 'webp'>
+          | undefined) ?? ['jpg', 'png', 'webp'],
+        allowedAudioFormats: (mediaStorage.allowedAudioFormats as
+          | Array<'mp3' | 'ogg' | 'm4a' | 'opus'>
+          | undefined) ?? ['mp3', 'ogg', 'm4a', 'opus'],
+      },
     },
   })
 
   const currentFlow = watch('flow_type')
   const aiEnabled = watch('ai_enabled')
+  const mediaEnabled = watch('media_storage.enabled')
+  const thumbEnabled = watch('media_storage.generateThumbnail')
+  const imageFormats = watch('media_storage.allowedImageFormats')
+  const audioFormats = watch('media_storage.allowedAudioFormats')
   const selectedFlowDef = FLOWS.find((f) => f.value === currentFlow)
 
   async function onSubmit(data: FormData) {
@@ -325,6 +368,147 @@ export function ConfigTab({ tenantSlug, botConfig }: Props) {
           onChange={(v) => setValue('audio_transcription_enabled', v)}
           disabled={!aiEnabled}
         />
+      </div>
+
+      <SectionTitle>Almacenamiento de medios</SectionTitle>
+
+      <div className="space-y-2">
+        <Toggle
+          id="media_storage_enabled"
+          label="Almacenar imagenes y audios en la VPS"
+          description="Guarda uploads del board en el filesystem local y usa la URL publica configurada en la VPS."
+          checked={mediaEnabled}
+          onChange={(v) => setValue('media_storage.enabled', v)}
+        />
+        <Toggle
+          id="media_storage_import"
+          label="Procesar y guardar localmente las imagenes al importar productos"
+          description="Al importar CSV, descarga la imagen externa y reemplaza image_url por la URL local."
+          checked={watch('media_storage.importProductsEnabled')}
+          onChange={(v) => setValue('media_storage.importProductsEnabled', v)}
+          disabled={!mediaEnabled}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label="Ancho maximo imagen (px)"
+          error={errors.media_storage?.imageMaxWidth?.message}
+        >
+          <input
+            {...register('media_storage.imageMaxWidth')}
+            type="number"
+            min={64}
+            max={4096}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="Formato de salida" error={errors.media_storage?.outputFormat?.message}>
+          <select {...register('media_storage.outputFormat')} className={SELECT}>
+            <option value="jpeg">jpeg</option>
+            <option value="webp">webp</option>
+            <option value="original">mantener original</option>
+          </select>
+        </Field>
+      </div>
+
+      <Field label={`Calidad de compresion (${watch('media_storage.quality')})`}>
+        <input
+          {...register('media_storage.quality')}
+          type="range"
+          min={1}
+          max={100}
+          className="w-full accent-primary"
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Toggle
+          id="media_storage_thumb"
+          label="Generar miniatura"
+          checked={thumbEnabled}
+          onChange={(v) => setValue('media_storage.generateThumbnail', v)}
+        />
+        <Toggle
+          id="media_storage_exif"
+          label="Conservar metadata EXIF"
+          checked={watch('media_storage.preserveExif')}
+          onChange={(v) => setValue('media_storage.preserveExif', v)}
+        />
+      </div>
+
+      {thumbEnabled && (
+        <Field label="Ancho miniatura (px)" error={errors.media_storage?.thumbnailWidth?.message}>
+          <input
+            {...register('media_storage.thumbnailWidth')}
+            type="number"
+            min={32}
+            max={2048}
+            className={INPUT}
+          />
+        </Field>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Max imagen (MB)" error={errors.media_storage?.maxImageUploadMb?.message}>
+          <input
+            {...register('media_storage.maxImageUploadMb')}
+            type="number"
+            min={1}
+            max={100}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="Max audio (MB)" error={errors.media_storage?.maxAudioUploadMb?.message}>
+          <input
+            {...register('media_storage.maxAudioUploadMb')}
+            type="number"
+            min={1}
+            max={200}
+            className={INPUT}
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Formatos imagen">
+          <div className="flex flex-wrap gap-2">
+            {(['jpg', 'png', 'webp'] as const).map((format) => (
+              <label key={format} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={imageFormats.includes(format)}
+                  onChange={(e) =>
+                    setValue(
+                      'media_storage.allowedImageFormats',
+                      toggleArrayValue(imageFormats, format, e.target.checked),
+                    )
+                  }
+                />
+                {format}
+              </label>
+            ))}
+          </div>
+        </Field>
+        <Field label="Formatos audio">
+          <div className="flex flex-wrap gap-2">
+            {(['mp3', 'ogg', 'm4a', 'opus'] as const).map((format) => (
+              <label key={format} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={audioFormats.includes(format)}
+                  onChange={(e) =>
+                    setValue(
+                      'media_storage.allowedAudioFormats',
+                      toggleArrayValue(audioFormats, format, e.target.checked),
+                    )
+                  }
+                />
+                {format}
+              </label>
+            ))}
+          </div>
+        </Field>
       </div>
 
       {currentFlow === 'hollywood_store' && (

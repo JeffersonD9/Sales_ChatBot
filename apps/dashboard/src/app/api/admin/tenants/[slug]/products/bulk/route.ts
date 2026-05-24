@@ -1,5 +1,6 @@
 import { validateSession } from '@/lib/auth'
 import { publishTenantConfigUpdated } from '@/lib/cache-events'
+import { mediaStorage } from '@/lib/media-storage'
 import { err, notFound, ok, serverError, unauthorized } from '@/lib/response'
 import { bulkCreateProducts } from '@/queries/products'
 import { getTenantBySlug } from '@/queries/tenants'
@@ -32,10 +33,45 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   try {
     const tenant = await getTenantBySlug(slug)
     if (!tenant) return notFound('Tenant')
-    const result = await bulkCreateProducts(tenant.id, parsed.data.products)
+    const config = mediaStorage.normalizeMediaStorageConfig(tenant.bot_config)
+    const products =
+      config.enabled && config.importProductsEnabled
+        ? await localizeProductImages(slug, parsed.data.products, config)
+        : parsed.data.products
+    const result = await bulkCreateProducts(tenant.id, products)
     if (result.inserted.length > 0) void publishTenantConfigUpdated(slug)
     return ok(result, undefined, 201)
   } catch (e) {
     return serverError(e)
   }
+}
+
+async function localizeProductImages(
+  tenantSlug: string,
+  products: z.infer<typeof itemSchema>[],
+  config: Record<string, unknown> & { maxImageUploadMb?: number },
+) {
+  const adapter = mediaStorage.createLocalVpsStorageAdapter()
+  const maxBytes = Number(config.maxImageUploadMb ?? 8) * 1024 * 1024
+
+  return Promise.all(
+    products.map(async (product) => {
+      if (!product.image_url || !/^https?:\/\//i.test(product.image_url)) return product
+      const res = await fetch(product.image_url)
+      if (!res.ok) throw new Error(`No se pudo descargar imagen de ${product.name}`)
+      const size = Number(res.headers.get('content-length') || 0)
+      if (size > maxBytes) throw new Error(`Imagen de ${product.name} supera el limite configurado`)
+      const buffer = Buffer.from(await res.arrayBuffer())
+      if (buffer.length > maxBytes) {
+        throw new Error(`Imagen de ${product.name} supera el limite configurado`)
+      }
+      const saved = await adapter.saveImage({
+        tenantSlug,
+        scope: 'products',
+        buffer,
+        config,
+      })
+      return { ...product, image_url: String(saved.url) }
+    }),
+  )
 }
