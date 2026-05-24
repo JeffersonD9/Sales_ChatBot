@@ -5,12 +5,19 @@
  *
  * Cómo agregar un flow nuevo:
  *   1. Crear flows/custom/<client-slug>/engine.js
- *   2. Exportar: { processMessage(phone, rawMsg, session, tenant, notifier, services) }
- *   3. Agregar la entrada en FLOWS_REGISTRY con aiCapabilities: []
+ *   2. Validar docs/meta-whatsapp-template-compliance-2026-05.md:
+ *      opt-in/template correcto, salida humana, opt-out, maximo 3 outbounds
+ *      sin respuesta, copy corto, categorias vigentes y sin marketing dentro
+ *      de pasos utility.
+ *   3. Exportar: { processMessage(phone, rawMsg, session, tenant, notifier, services) }
+ *   4. Agregar la entrada en FLOWS_REGISTRY con aiCapabilities: []
  *
  * aiCapabilities declara qué puede usar el flow si el tenant lo tiene habilitado.
  * Opciones disponibles: 'imageAnalysis'
  * El flow recibe services.ai?.analyzeImage — null si no aplica.
+ *
+ * Todo outbound debe pasar por sender.js para que antiBanGuard pueda filtrar
+ * suppression list, ventana horaria, circuit breaker y errores Meta.
  */
 
 const FLOWS_REGISTRY = {

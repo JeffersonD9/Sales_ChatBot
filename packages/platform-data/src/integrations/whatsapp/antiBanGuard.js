@@ -40,9 +40,16 @@ const ERROR_ACTIONS = {
   131047: { action: 'outside_customer_care_window' },
   131048: { action: 'spam_rate_limit', critical: true, suppressReason: 'spam_complaint' },
   131049: { action: 'message_quality', rateMultiplier: 0.6 },
+  131050: { action: 'recipient_marketing_opt_out', suppressReason: 'opt_out' },
   132000: { action: 'template_error', noRetry: true },
   132001: { action: 'template_error', noRetry: true },
+  132005: { action: 'template_error', noRetry: true },
   132007: { action: 'template_error', noRetry: true },
+  132012: { action: 'template_error', noRetry: true },
+  132015: { action: 'template_paused', noRetry: true, rateMultiplier: 0.5 },
+  132016: { action: 'template_disabled', noRetry: true, rateMultiplier: 0.5 },
+  132068: { action: 'flow_blocked', noRetry: true, rateMultiplier: 0.5 },
+  132069: { action: 'flow_throttled', rateMultiplier: 0.5 },
 };
 
 function antiBanEnabled() {
