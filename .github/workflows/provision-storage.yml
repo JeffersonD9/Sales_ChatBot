@@ -118,6 +118,38 @@ jobs:
             ADMIN_API_TOKEN="$ADMIN_API_TOKEN" \
             bash infra/storage/host-scripts/provision-storage-host.sh
 
+          # ── Expandir cert TLS para incluir CDN_DOMAIN como SAN ──────────────
+          # El pipeline de deploy no maneja certs; lo hacemos aquí (idempotente).
+          # nginx ya sirve el ACME challenge de CDN_DOMAIN en :80.
+          CDN_DOMAIN=$(grep -E '^CDN_DOMAIN=' .env | head -1 | cut -d= -f2- || true)
+          DOMAIN=$(grep -E '^DOMAIN=' .env | head -1 | cut -d= -f2- || true)
+          ADMIN_DOMAIN=$(grep -E '^ADMIN_DOMAIN=' .env | head -1 | cut -d= -f2- || true)
+          CERTBOT_EMAIL=$(grep -E '^CERTBOT_EMAIL=' .env | head -1 | cut -d= -f2- || true)
+
+          if [ -n "$CDN_DOMAIN" ] && [ -n "$DOMAIN" ] && [ -n "$CERTBOT_EMAIL" ]; then
+            cert_has_cdn=0
+            docker run --rm -v "$DEPLOY_PATH/certbot/conf:/etc/letsencrypt:ro" \
+              certbot/certbot:latest certificates 2>/dev/null | grep -q "$CDN_DOMAIN" && cert_has_cdn=1
+
+            if [ "$cert_has_cdn" -eq 0 ]; then
+              echo "── Expandiendo cert TLS con $CDN_DOMAIN ──"
+              CERT_ARGS="-d $DOMAIN"
+              [ -n "$ADMIN_DOMAIN" ] && CERT_ARGS="$CERT_ARGS -d $ADMIN_DOMAIN"
+              CERT_ARGS="$CERT_ARGS -d $CDN_DOMAIN"
+              docker run --rm \
+                -v "$DEPLOY_PATH/certbot/conf:/etc/letsencrypt" \
+                -v "$DEPLOY_PATH/certbot/www:/var/www/certbot" \
+                certbot/certbot:latest certonly --webroot \
+                --webroot-path=/var/www/certbot \
+                --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email \
+                --non-interactive --expand $CERT_ARGS \
+                && docker exec whatsapp-saas-nginx nginx -s reload \
+                && echo "[provision] cert expandido + nginx recargado"
+            else
+              echo "[provision] cert ya incluye $CDN_DOMAIN — skip"
+            fi
+          fi
+
           echo "── Verificación ──"
           ls -la /var/whatsapp-saas/media
           echo ""
