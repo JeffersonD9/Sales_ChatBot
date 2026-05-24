@@ -42,9 +42,16 @@ const allocationValues = ALLOCATION_OPTIONS.map((o) => o.value) as [
 ]
 
 const metadataEntrySchema = z.object({
+  id: z.string(),
   key: z.string(),
   value: z.string(),
 })
+
+let metadataIdCounter = 0
+function nextMetadataId(): string {
+  metadataIdCounter += 1
+  return `m_${metadataIdCounter}`
+}
 
 const schema = z.object({
   code: z.string().min(2, 'Mínimo 2 caracteres').max(50),
@@ -74,7 +81,7 @@ const INPUT =
 function slugify(value: string): string {
   return value
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
@@ -84,6 +91,7 @@ function slugify(value: string): string {
 function metadataToEntries(metadata: Record<string, unknown> | undefined) {
   if (!metadata) return []
   return Object.entries(metadata).map(([key, value]) => ({
+    id: nextMetadataId(),
     key,
     value: typeof value === 'string' ? value : JSON.stringify(value),
   }))
@@ -175,9 +183,11 @@ export function PlanDialog({ plan, open: controlledOpen, onOpenChange }: Props) 
   )
 
   function addMetadataRow() {
-    form.setValue('metadata', [...form.getValues('metadata'), { key: '', value: '' }], {
-      shouldValidate: true,
-    })
+    form.setValue(
+      'metadata',
+      [...form.getValues('metadata'), { id: nextMetadataId(), key: '', value: '' }],
+      { shouldValidate: true },
+    )
   }
 
   function removeMetadataRow(index: number) {
@@ -363,8 +373,8 @@ export function PlanDialog({ plan, open: controlledOpen, onOpenChange }: Props) 
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {metadata.map((_, index) => (
-                      <div key={index} className="flex items-center gap-2">
+                    {metadata.map((entry, index) => (
+                      <div key={entry.id} className="flex items-center gap-2">
                         <input
                           {...form.register(`metadata.${index}.key` as const)}
                           placeholder="clave"
