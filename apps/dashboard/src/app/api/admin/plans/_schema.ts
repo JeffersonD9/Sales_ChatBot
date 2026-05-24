@@ -1,8 +1,11 @@
 import { z } from 'zod'
 
+export const PLAN_TIERS = ['basic', 'premium'] as const
+export const PLAN_ALLOCATIONS = ['shared-low', 'shared-medium', 'dedicated-db'] as const
+
 export const planFieldsSchema = z.object({
   name: z.string().min(2).max(128),
-  tier: z.string().min(2).max(32),
+  tier: z.enum(PLAN_TIERS),
   monthly_price: z.number().int().nonnegative(),
   currency: z
     .string()
@@ -14,7 +17,7 @@ export const planFieldsSchema = z.object({
   daily_message_limit: z.number().int().nonnegative(),
   daily_ai_reply_limit: z.number().int().nonnegative(),
   daily_ai_token_limit: z.number().int().nonnegative(),
-  default_allocation_strategy: z.string().min(2).max(32),
+  default_allocation_strategy: z.enum(PLAN_ALLOCATIONS),
   metadata: z.record(z.unknown()).default({}),
 })
 
