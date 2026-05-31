@@ -7,12 +7,18 @@ import { getTenantBySlug } from '@/queries/tenants'
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 
+// image_url debe ser http(s) explicito: bloquea javascript:, data:, file:, etc.
+const httpUrl = z
+  .string()
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), { message: 'image_url debe ser http(s)' })
+
 const itemSchema = z.object({
   name: z.string().min(1).max(256),
   description: z.string().max(2000).optional(),
   price: z.number().int().positive(),
-  sizes: z.array(z.string()).optional(),
-  image_url: z.string().url().optional().or(z.literal('')),
+  sizes: z.array(z.string().min(1).max(16)).max(20).optional(),
+  image_url: httpUrl.optional().or(z.literal('')),
   emoji: z.string().max(8).optional(),
   category: z.string().max(128).optional(),
 })

@@ -40,42 +40,70 @@ type Props = {
   onImported: () => void
 }
 
+// Parser CSV (RFC 4180-ish) que respeta saltos de línea dentro de comillas.
+// Recorre carácter a carácter sobre TODO el texto (no por líneas), así una celda
+// como "Linea1\nLinea2" no se parte. Soporta dobles comillas escapadas ("").
 function parseCSV(text: string): string[][] {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
-  const result: string[][] = []
-  for (const line of lines) {
-    if (!line.trim()) continue
-    const fields: string[] = []
-    let current = ''
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
+  const rows: string[][] = []
+  let fields: string[] = []
+  let current = ''
+  let inQuotes = false
+  const src = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    if (inQuotes) {
       if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
+        if (src[i + 1] === '"') {
           current += '"'
           i++
-        } else inQuotes = !inQuotes
-      } else if (ch === ',' && !inQuotes) {
-        fields.push(current.trim())
-        current = ''
+        } else {
+          inQuotes = false
+        }
       } else {
         current += ch
       }
+      continue
     }
-    fields.push(current.trim())
-    result.push(fields)
+    if (ch === '"') {
+      inQuotes = true
+      continue
+    }
+    if (ch === ',') {
+      fields.push(current.trim())
+      current = ''
+      continue
+    }
+    if (ch === '\n') {
+      fields.push(current.trim())
+      // Ignorar filas totalmente vacías (csv con líneas en blanco)
+      if (fields.length > 1 || fields[0] !== '') rows.push(fields)
+      fields = []
+      current = ''
+      continue
+    }
+    current += ch
   }
-  return result
+  // Última fila sin newline final
+  if (current !== '' || fields.length > 0) {
+    fields.push(current.trim())
+    if (fields.length > 1 || fields[0] !== '') rows.push(fields)
+  }
+  return rows
 }
 
-function isValidUrl(str: string) {
+// Solo permitimos http(s) — bloquea javascript:, data:, file:, etc.
+function isValidHttpUrl(str: string) {
   try {
-    new URL(str)
-    return true
+    const u = new URL(str)
+    return u.protocol === 'http:' || u.protocol === 'https:'
   } catch {
     return false
   }
 }
+
+// Límite duro del servidor — ver products/bulk/route.ts max(500).
+const MAX_PRODUCTS_PER_IMPORT = 500
 
 const TEMPLATE_CSV = [
   'name,price,image_url,description,sizes,emoji,category',
@@ -123,6 +151,13 @@ export function CsvImportDialog({ open, tenantSlug, onClose, onImported }: Props
       const headers = rows[0].map((h) => h.toLowerCase().replace(/\s+/g, '_'))
       const dataRows = rows.slice(1)
 
+      if (dataRows.length > MAX_PRODUCTS_PER_IMPORT) {
+        toast.error(
+          `El CSV tiene ${dataRows.length} filas y el límite es ${MAX_PRODUCTS_PER_IMPORT}. Dividilo en varios archivos.`,
+        )
+        return
+      }
+
       const idxName = headers.indexOf('name')
       const idxPrice = headers.indexOf('price')
       const idxImg = headers.indexOf('image_url')
@@ -157,7 +192,7 @@ export function CsvImportDialog({ open, tenantSlug, onClose, onImported }: Props
         if (!name) errors.push('name requerido')
         if (!priceS || Number.isNaN(price) || price <= 0) errors.push('price inválido')
         if (!imgUrl) errors.push('image_url requerida')
-        else if (!isValidUrl(imgUrl)) errors.push('image_url no es URL válida')
+        else if (!isValidHttpUrl(imgUrl)) errors.push('image_url debe ser http(s) válida')
         return {
           index: i,
           data: { name, price, image_url: imgUrl, description: desc, sizes, emoji, category: cat },
