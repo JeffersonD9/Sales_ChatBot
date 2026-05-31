@@ -30,6 +30,9 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import platformData from '../packages/platform-data/index.js';
+import sharedUtils from '@whatsapp-saas/shared-utils';
+
+const { safeFetch } = sharedUtils;
 
 dotenv.config();
 
@@ -151,16 +154,12 @@ async function localizeProductImages(slug, tenant, products) {
       continue;
     }
 
-    const res = await fetch(product.image_url);
-    if (!res.ok) throw new Error(`No se pudo descargar imagen de ${product.name}`);
-    const declaredSize = Number(res.headers.get('content-length') || 0);
-    if (declaredSize > maxBytes) {
-      throw new Error(`Imagen de ${product.name} supera el limite configurado`);
-    }
-
-    const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.length > maxBytes) {
-      throw new Error(`Imagen de ${product.name} supera el limite configurado`);
+    let buffer;
+    try {
+      // SSRF-safe: bloquea IPs privadas, sin redirects, timeout, corta por bytes.
+      ({ buffer } = await safeFetch(product.image_url, { maxBytes, timeoutMs: 15000 }));
+    } catch (err) {
+      throw new Error(`Imagen de ${product.name}: ${err.message}`);
     }
 
     const saved = await adapter.saveImage({ tenantSlug: slug, scope: 'products', buffer, config });

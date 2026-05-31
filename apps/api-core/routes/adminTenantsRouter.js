@@ -1,13 +1,26 @@
 import express from 'express';
 import platformData from '../../../packages/platform-data/index.js';
-import cryptoModule from '@whatsapp-saas/shared-utils';
+import sharedUtils from '@whatsapp-saas/shared-utils';
 import loggerModule from '@whatsapp-saas/logger';
 
 const tenantRepo = platformData.tenantRepository;
 const tenantLoader = platformData.tenantLoader;
 const { publishConfigUpdated } = platformData.tenantConfigEvents;
-const { encrypt } = cryptoModule;
+const { encrypt, normalizePhoneE164 } = sharedUtils;
 const { logger } = loggerModule;
+
+// Mapea errores UNIQUE de Postgres al campo específico para que el dashboard pueda
+// devolver un mensaje accionable en vez del genérico "duplicate".
+function mapDuplicateError(err) {
+  const detail = `${err?.constraint || ''} ${err?.detail || ''} ${err?.message || ''}`.toLowerCase();
+  if (detail.includes('slug')) return 'El slug ya existe';
+  if (detail.includes('owner_phone')) return 'Ya existe un tenant con ese teléfono';
+  if (detail.includes('owner_email')) return 'Ya existe un tenant con ese email';
+  if (detail.includes('phone_number_id')) return 'phone_number_id ya está en uso por otro tenant';
+  if (detail.includes('verify_token')) return 'verify_token colisionado, reintentá';
+  if (detail.includes('name')) return 'Ya existe un tenant con ese nombre';
+  return 'Conflicto de unicidad';
+}
 
 const router = express.Router();
 
@@ -48,25 +61,40 @@ router.post('/', async (req, res) => {
     entitlements,
   } = req.body || {};
 
-  if (!slug || !name || !wa_token || !phone_number_id || !owner_phone) {
+  // Mínimos obligatorios — wa_token y phone_number_id ahora son opcionales y se
+  // configuran luego desde la tab WhatsApp del dashboard.
+  if (!slug || !name || !owner_phone) {
     return res.status(400).json({
       ok: false,
-      error: 'Faltan campos requeridos: slug, name, wa_token, phone_number_id, owner_phone',
+      error: 'Faltan campos requeridos: slug, name, owner_phone',
     });
   }
 
+  // Validación E.164 (acepta variantes con espacios/guiones, normaliza al canónico)
+  const owner_phone_norm = normalizePhoneE164(owner_phone);
+  if (!owner_phone_norm) {
+    return res.status(400).json({
+      ok: false,
+      error: 'owner_phone debe estar en formato internacional E.164 (ej. +573001234567)',
+    });
+  }
+
+  const normalized_email = owner_email
+    ? String(owner_email).trim().toLowerCase() || null
+    : null;
+
   try {
-    const wa_token_encrypted = encrypt(wa_token);
+    const wa_token_encrypted = wa_token ? encrypt(wa_token) : null;
     const verify_token = await tenantRepo.generateUniqueVerifyToken(slug);
 
     const tenant = await tenantRepo.create({
       slug,
       name,
       wa_token_encrypted,
-      phone_number_id,
+      phone_number_id: phone_number_id || null,
       verify_token,
-      owner_phone,
-      owner_email,
+      owner_phone: owner_phone_norm,
+      owner_email: normalized_email,
       bot_config: bot_config || {},
       plan,
       cluster_code,
@@ -82,7 +110,7 @@ router.post('/', async (req, res) => {
     logger.warn({ slug, err: err.message }, '[Admin:Tenants] create error');
     return res.status(isDuplicate ? 409 : 500).json({
       ok: false,
-      error: isDuplicate ? 'El slug ya existe' : 'Error interno',
+      error: isDuplicate ? mapDuplicateError(err) : 'Error interno',
     });
   }
 });
@@ -93,6 +121,23 @@ router.patch('/:slug', async (req, res) => {
 
   if (wa_token) {
     fields.wa_token_encrypted = encrypt(wa_token);
+  }
+
+  // Si el patch toca owner_phone, validar y normalizar antes de ir a DB.
+  if ('owner_phone' in fields && fields.owner_phone != null) {
+    const norm = normalizePhoneE164(fields.owner_phone);
+    if (!norm) {
+      return res.status(400).json({
+        ok: false,
+        error: 'owner_phone debe estar en formato internacional E.164 (ej. +573001234567)',
+      });
+    }
+    fields.owner_phone = norm;
+  }
+
+  if ('owner_email' in fields && fields.owner_email != null) {
+    const email = String(fields.owner_email).trim().toLowerCase();
+    fields.owner_email = email || null;
   }
 
   if (Object.keys(fields).length === 0) {
@@ -108,8 +153,12 @@ router.patch('/:slug', async (req, res) => {
 
     return res.json({ ok: true, data: updated });
   } catch (err) {
+    const isDuplicate = err.code === '23505' || err.message?.includes('duplicate');
     logger.error({ slug: req.params.slug, err: err.message }, '[Admin:Tenants] update error');
-    return res.status(500).json({ ok: false, error: 'Error interno' });
+    return res.status(isDuplicate ? 409 : 500).json({
+      ok: false,
+      error: isDuplicate ? mapDuplicateError(err) : 'Error interno',
+    });
   }
 });
 

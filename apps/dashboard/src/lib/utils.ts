@@ -42,3 +42,25 @@ export function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 }
+
+/**
+ * Normaliza un teléfono a E.164 (`+<digits>`, 7-15 dígitos, primer 1-9).
+ * Devuelve null si el input no se puede mapear a un E.164 sintácticamente válido.
+ * Acepta entradas con espacios, guiones, paréntesis, puntos y prefijo `00`.
+ *
+ * Mantener sincronizado con packages/shared-utils/phoneE164.js.
+ */
+export function normalizePhoneE164(input: string | null | undefined): string | null {
+  if (typeof input !== 'string') return null
+  let cleaned = input.trim()
+  if (!cleaned) return null
+  if (cleaned.startsWith('00')) cleaned = `+${cleaned.slice(2)}`
+  const digits = cleaned.replace(/[^\d]/g, '')
+  if (!digits) return null
+  const canonical = `+${digits}`
+  return /^\+[1-9]\d{6,14}$/.test(canonical) ? canonical : null
+}
+
+export function isValidPhoneE164(input: string | null | undefined): boolean {
+  return normalizePhoneE164(input) !== null
+}

@@ -1,9 +1,11 @@
 import express from 'express';
 import platformData from '../../../packages/platform-data/index.js';
 import loggerModule from '@whatsapp-saas/logger';
+import sharedUtils from '@whatsapp-saas/shared-utils';
 
 const { logger } = loggerModule;
 const { media, tenantRepository } = platformData;
+const { safeFetch } = sharedUtils;
 
 const router = express.Router({ mergeParams: true });
 
@@ -109,12 +111,14 @@ router.post('/:slug/localize', async (req, res) => {
   const errors = {};
 
   await Promise.all(urls.map(async (url) => {
-    if (!/^https?:\/\//i.test(String(url))) return;
+    if (!/^https?:\/\//i.test(String(url))) {
+      errors[url] = 'Protocolo no permitido';
+      return;
+    }
     try {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const buffer = Buffer.from(await r.arrayBuffer());
-      if (buffer.length > maxBytes) throw new Error('supera límite');
+      // SSRF-safe: valida hostname (no IPs privadas), bloquea redirects, timeout,
+      // y aborta si supera maxBytes en streaming.
+      const { buffer } = await safeFetch(url, { maxBytes, timeoutMs: 15000 });
       const saved = await adapter.saveImage({
         tenantSlug: req.params.slug,
         scope: 'products',

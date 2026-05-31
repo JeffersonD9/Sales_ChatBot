@@ -1,6 +1,6 @@
 'use client'
 
-import { slugify } from '@/lib/utils'
+import { isValidPhoneE164, normalizePhoneE164, slugify } from '@/lib/utils'
 import type { PlanRow } from '@/queries/plans'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, X } from 'lucide-react'
@@ -11,8 +11,20 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 const schema = z.object({
-  name: z.string().min(2, 'Mínimo 2 caracteres').max(256),
-  owner_phone: z.string().min(7, 'Mínimo 7 dígitos').max(32),
+  name: z
+    .string()
+    .min(2, 'Mínimo 2 caracteres')
+    .max(256)
+    .refine((v) => slugify(v).length >= 2 && slugify(v).length <= 60, {
+      message: 'Nombre genera un slug inválido (usá letras, números y espacios)',
+    }),
+  owner_phone: z
+    .string()
+    .min(7, 'Mínimo 7 dígitos')
+    .max(32)
+    .refine((v) => isValidPhoneE164(v), {
+      message: 'Formato internacional E.164 (ej. +573001234567)',
+    }),
   owner_email: z.union([z.string().email('Email inválido'), z.literal('')]).optional(),
   plan: z.string().regex(/^[a-z0-9_-]+$/, 'Selecciona un plan válido'),
 })
@@ -50,12 +62,18 @@ export function CreateTenantButton({
   }, [open])
 
   async function onSubmit(data: FormData) {
+    const phoneNorm = normalizePhoneE164(data.owner_phone)
+    if (!phoneNorm) {
+      toast.error('Teléfono inválido')
+      return
+    }
     try {
       const res = await fetch('/api/admin/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...data,
+          owner_phone: phoneNorm,
           owner_email: data.owner_email || undefined,
         }),
       })

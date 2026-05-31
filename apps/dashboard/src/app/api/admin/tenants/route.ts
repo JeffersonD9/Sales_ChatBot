@@ -1,9 +1,19 @@
+import { env } from '@/env'
 import { validateSession } from '@/lib/auth'
 import { created, err, ok, serverError, unauthorized } from '@/lib/response'
-import { slugify } from '@/lib/utils'
-import { createTenant, getTenantList } from '@/queries/tenants'
+import { normalizePhoneE164, slugify } from '@/lib/utils'
+import { getTenantList } from '@/queries/tenants'
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
+
+export const runtime = 'nodejs'
+
+const BASE = (env.API_CORE_INTERNAL_URL || 'http://api:3000').replace(/\/+$/, '')
+
+function authHeaders(): Record<string, string> {
+  if (!env.ADMIN_API_KEY) throw new Error('ADMIN_API_KEY no configurado en el dashboard')
+  return { 'x-api-key': env.ADMIN_API_KEY, 'Content-Type': 'application/json' }
+}
 
 export async function GET(req: NextRequest) {
   const user = await validateSession()
@@ -31,6 +41,8 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Validación cliente-side (server-side la repite api-core).
+// owner_phone se acepta con formato libre; se normaliza a E.164 antes de enviar.
 const createSchema = z.object({
   name: z.string().min(2, 'Mínimo 2 caracteres').max(256),
   owner_phone: z.string().min(7).max(32),
@@ -49,20 +61,43 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body)
   if (!parsed.success) return err('Datos inválidos', 400, parsed.error.flatten())
 
-  const slug = slugify(parsed.data.name)
+  const phoneNorm = normalizePhoneE164(parsed.data.owner_phone)
+  if (!phoneNorm) {
+    return err(
+      'owner_phone debe estar en formato internacional E.164 (ej. +573001234567)',
+      400,
+    )
+  }
 
+  const slug = slugify(parsed.data.name).slice(0, 60)
+  if (!slug) return err('Nombre inválido para generar slug', 400)
+
+  // Proxy a api-core: genera verify_token, cifra wa_token cuando exista,
+  // crea la allocation y publica el evento de invalidación de cache.
   try {
-    const tenant = await createTenant({
-      ...parsed.data,
-      slug,
-      owner_email: parsed.data.owner_email ?? undefined,
+    const upstream = await fetch(`${BASE}/api/admin/tenants`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        slug,
+        name: parsed.data.name,
+        owner_phone: phoneNorm,
+        owner_email: parsed.data.owner_email
+          ? parsed.data.owner_email.trim().toLowerCase()
+          : undefined,
+        plan: parsed.data.plan,
+      }),
     })
-    return created(tenant)
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : ''
-    if (msg.includes('unique') || msg.includes('duplicate')) {
-      return err('Ya existe un tenant con ese nombre o teléfono', 409)
+    const json = (await upstream.json().catch(() => ({}))) as {
+      ok?: boolean
+      data?: unknown
+      error?: string
     }
-    return serverError(e)
+    if (!upstream.ok) {
+      return err(json.error || `api-core ${upstream.status}`, upstream.status)
+    }
+    return created(json.data ?? null)
+  } catch (e) {
+    return serverError(e, 'admin:tenants:create')
   }
 }
