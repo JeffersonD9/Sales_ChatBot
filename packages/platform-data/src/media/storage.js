@@ -9,7 +9,9 @@ const { Readable } = require('stream');
 const { detectMime } = require('./mime');
 const { processImage } = require('./imagePipeline');
 
-const SCOPE_RE = /^[a-z0-9_-]{1,40}$/i;
+// SCOPE_RE valida el scope normalizado a minúsculas en cleanPart(); por eso el
+// rango es solo [a-z], sin flag /i. Mantener consistente con adminMediaRouter.
+const SCOPE_RE = /^[a-z0-9_-]{1,40}$/;
 
 function getBasePath() {
   const value = process.env.MEDIA_STORAGE_BASE_PATH;

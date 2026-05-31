@@ -105,6 +105,39 @@ function isValidHttpUrl(str: string) {
 // Límite duro del servidor — ver products/bulk/route.ts max(500).
 const MAX_PRODUCTS_PER_IMPORT = 500
 
+// Limites por columna alineados al schema de bulk/route.ts.
+const MAX_DESCRIPTION = 2000
+const MAX_CATEGORY = 128
+const MAX_SIZES = 20
+const MAX_SIZE_LEN = 16
+
+// Normaliza un header CSV: minúsculas, sin tildes, espacios → _.
+// Acepta variantes en español del template (ej: "Categoría" → "category" via alias).
+function normalizeHeader(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .replace(/\s+/g, '_')
+}
+
+const HEADER_ALIASES: Record<string, string> = {
+  nombre: 'name',
+  precio: 'price',
+  imagen_url: 'image_url',
+  imagen: 'image_url',
+  url_imagen: 'image_url',
+  descripcion: 'description',
+  tallas: 'sizes',
+  categoria: 'category',
+}
+
+function resolveHeader(raw: string): string {
+  const norm = normalizeHeader(raw)
+  return HEADER_ALIASES[norm] ?? norm
+}
+
 const TEMPLATE_CSV = [
   'name,price,image_url,description,sizes,emoji,category',
   '"Vestido Floral",85000,https://ejemplo.com/vestido.jpg,"Vestido de verano floral",S|M|L,👗,Vestidos',
@@ -148,7 +181,7 @@ export function CsvImportDialog({ open, tenantSlug, onClose, onImported }: Props
         toast.error('El CSV debe tener al menos una fila de datos')
         return
       }
-      const headers = rows[0].map((h) => h.toLowerCase().replace(/\s+/g, '_'))
+      const headers = rows[0].map(resolveHeader)
       const dataRows = rows.slice(1)
 
       if (dataRows.length > MAX_PRODUCTS_PER_IMPORT) {
@@ -181,7 +214,10 @@ export function CsvImportDialog({ open, tenantSlug, onClose, onImported }: Props
         const sizesS = get(cols, idxSizes)
         const emoji = get(cols, idxEmoji) || '🛍️'
         const cat = get(cols, idxCat)
-        const price = Number.parseInt(priceS, 10)
+        // M2: parse estricto. "100.5" → invalido (no truncar silenciosamente);
+        // "100abc" tambien invalido.
+        const priceTrim = priceS.trim()
+        const price = /^\d+$/.test(priceTrim) ? Number(priceTrim) : Number.NaN
         const sizes = sizesS
           ? sizesS
               .split('|')
@@ -190,9 +226,18 @@ export function CsvImportDialog({ open, tenantSlug, onClose, onImported }: Props
           : []
         const errors: string[] = []
         if (!name) errors.push('name requerido')
-        if (!priceS || Number.isNaN(price) || price <= 0) errors.push('price inválido')
+        if (name.length > 256) errors.push('name supera 256 chars')
+        if (!priceTrim || Number.isNaN(price) || price <= 0)
+          errors.push('price debe ser entero positivo')
         if (!imgUrl) errors.push('image_url requerida')
         else if (!isValidHttpUrl(imgUrl)) errors.push('image_url debe ser http(s) válida')
+        // M3: limites por columna alineados al server.
+        if (desc.length > MAX_DESCRIPTION) errors.push(`description > ${MAX_DESCRIPTION} chars`)
+        if (cat.length > MAX_CATEGORY) errors.push(`category > ${MAX_CATEGORY} chars`)
+        // M4: validar limites de sizes.
+        if (sizes.length > MAX_SIZES) errors.push(`sizes > ${MAX_SIZES} elementos`)
+        else if (sizes.some((s) => s.length > MAX_SIZE_LEN))
+          errors.push(`cada talla debe ser ≤${MAX_SIZE_LEN} chars`)
         return {
           index: i,
           data: { name, price, image_url: imgUrl, description: desc, sizes, emoji, category: cat },
@@ -325,11 +370,11 @@ export function CsvImportDialog({ open, tenantSlug, onClose, onImported }: Props
                 </thead>
                 <tbody>
                   {[
-                    ...result.skipped.map((p) => ({ ...p, _s: 'skip' })),
-                    ...result.errors.map((p) => ({ ...p, _s: 'err' })),
+                    ...result.skipped.map((p, i) => ({ ...p, _s: 'skip', _i: i })),
+                    ...result.errors.map((p, i) => ({ ...p, _s: 'err', _i: i })),
                   ].map((p) => (
                     <tr
-                      key={`${p._s}-${p.name}-${p.reason}`}
+                      key={`${p._s}-${p._i}-${p.name}`}
                       className="border-b border-border last:border-0"
                     >
                       <td className="px-3 py-2">

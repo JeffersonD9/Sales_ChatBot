@@ -241,34 +241,68 @@ function MediaImageUpload({
   onUploaded: (url: string) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const xhrRef = useRef<XMLHttpRequest | null>(null)
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
 
-  async function upload(file: File) {
+  function cancel() {
+    if (xhrRef.current) {
+      xhrRef.current.abort()
+      xhrRef.current = null
+    }
+    setUploading(false)
+    setProgress(0)
+  }
+
+  // Usamos XHR en vez de fetch para obtener evento `progress` real del upload
+  // y poder cancelar con .abort(). fetch() no expone upload progress aún.
+  function upload(file: File) {
     if (!file) return
     setUploading(true)
+    setProgress(0)
     const form = new FormData()
     form.append('file', file)
     form.append('type', 'image')
     form.append('scope', 'products')
 
-    try {
-      const res = await fetch(`/api/admin/tenants/${tenantSlug}/media`, {
-        method: 'POST',
-        body: form,
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        toast.error(json.error ?? 'Error subiendo imagen')
-        return
+    const xhr = new XMLHttpRequest()
+    xhrRef.current = xhr
+    xhr.open('POST', `/api/admin/tenants/${tenantSlug}/media`)
+    xhr.upload.onprogress = (evt) => {
+      if (evt.lengthComputable) {
+        setProgress(Math.round((evt.loaded / evt.total) * 100))
       }
-      onUploaded(json.data?.url ?? json.url)
-      toast.success('Imagen subida')
-    } catch {
-      toast.error('Error de conexion')
-    } finally {
-      setUploading(false)
     }
+    xhr.onload = () => {
+      xhrRef.current = null
+      setUploading(false)
+      try {
+        const json = JSON.parse(xhr.responseText || '{}')
+        if (xhr.status < 200 || xhr.status >= 300) {
+          toast.error(json.error ?? `Error subiendo imagen (${xhr.status})`)
+          return
+        }
+        onUploaded(json.data?.url ?? json.url)
+        toast.success('Imagen subida')
+      } catch {
+        toast.error('Respuesta inválida del servidor')
+      } finally {
+        setProgress(0)
+      }
+    }
+    xhr.onerror = () => {
+      xhrRef.current = null
+      setUploading(false)
+      setProgress(0)
+      toast.error('Error de conexión')
+    }
+    xhr.onabort = () => {
+      xhrRef.current = null
+      setUploading(false)
+      setProgress(0)
+    }
+    xhr.send(form)
   }
 
   return (
@@ -288,14 +322,31 @@ function MediaImageUpload({
           e.preventDefault()
           setDragging(false)
           const file = e.dataTransfer.files?.[0]
-          if (file) void upload(file)
+          if (file) upload(file)
         }}
       >
         <span className="flex items-center gap-2 text-muted-foreground">
           <ImageUp className="h-4 w-4" />
-          {uploading ? 'Subiendo...' : 'Subir imagen a la VPS'}
+          {uploading ? `Subiendo... ${progress}%` : 'Subir imagen a la VPS'}
         </span>
       </button>
+      {uploading && (
+        <div className="space-y-1">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-[width] duration-150 ease-linear"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={cancel}
+            className="text-xs text-muted-foreground hover:text-destructive"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
       <input
         ref={inputRef}
         type="file"
@@ -303,7 +354,7 @@ function MediaImageUpload({
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0]
-          if (file) void upload(file)
+          if (file) upload(file)
           e.currentTarget.value = ''
         }}
       />

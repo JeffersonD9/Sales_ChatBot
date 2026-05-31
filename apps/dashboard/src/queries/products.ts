@@ -83,6 +83,20 @@ export async function deactivateProduct(id: string, tenantId: string) {
   return updated
 }
 
+/**
+ * Inserción por lote de productos, **no transaccional a propósito**.
+ *
+ * Cada item se inserta de forma independiente. Si un item falla por UNIQUE
+ * (mismo nombre que un producto existente del tenant — ver
+ * `products_tenant_name_lower_unique` en scripts/sql/fase-4-constraints.sql),
+ * se reporta en `skipped` o `errors` y los demás siguen.
+ *
+ * Decisión deliberada: en imports CSV es preferible que 499 filas válidas
+ * queden insertadas aunque la 500 tenga un problema, en vez de hacer un
+ * all-or-nothing que obligaría al usuario a corregir el CSV completo y
+ * reintentar todo. El UI de csv-import-dialog refleja esta contract con
+ * tres counters (importados / ya existían / errores).
+ */
 export async function bulkCreateProducts(
   tenantId: string,
   items: CreateProductData[],
