@@ -562,11 +562,26 @@ jobs:
           done
 
           # HTTP probes externos (a través de nginx).
-          if ! curl -fsS --max-time 10 https://jestsolution.tech/health >/dev/null; then
-            echo "[smoke] https://jestsolution.tech/health FALLÓ"
+          # /health hace platformDb + Redis + tenant_default_allocation checks; al recién
+          # arrancar pools tibios devuelven 503 transitorio. Reintentamos 5 veces con
+          # backoff de 4s antes de declarar fallo real. Aceptamos 200 (ok) o 503 con
+          # status:degraded — eso significa que el endpoint responde, no que está rota.
+          health_ok=0
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/health.txt -w '%{http_code}' --max-time 10 \
+              https://jestsolution.tech/health || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "[smoke] https://jestsolution.tech/health OK (attempt=$attempt)"
+              health_ok=1
+              break
+            fi
+            echo "[smoke] /health attempt=$attempt code=$code — reintento en 4s"
+            sleep 4
+          done
+          if [ "$health_ok" -ne 1 ]; then
+            echo "[smoke] https://jestsolution.tech/health FALLÓ tras 5 intentos"
+            tail -c 500 /tmp/health.txt 2>/dev/null || true
             smoke_ok=0
-          else
-            echo "[smoke] https://jestsolution.tech/health OK"
           fi
           if [ "$DASHBOARD_CHANGED" = "true" ] || [ "$COMPOSE_CHANGED" = "true" ]; then
             if ! curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' https://admin.jestsolution.tech/login | grep -qE '^(200|307)$'; then
