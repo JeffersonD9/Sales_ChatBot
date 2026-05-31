@@ -63,10 +63,7 @@ export async function POST(req: NextRequest) {
 
   const phoneNorm = normalizePhoneE164(parsed.data.owner_phone)
   if (!phoneNorm) {
-    return err(
-      'owner_phone debe estar en formato internacional E.164 (ej. +573001234567)',
-      400,
-    )
+    return err('owner_phone debe estar en formato internacional E.164 (ej. +573001234567)', 400)
   }
 
   const slug = slugify(parsed.data.name).slice(0, 60)
