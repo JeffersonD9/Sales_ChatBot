@@ -50,6 +50,7 @@ export function CreateTenantButton({
 
   const name = watch('name')
   const previewSlug = name ? slugify(name).slice(0, 60) : ''
+  const [slugStatus, setSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
 
   // Cerrar con Escape
   useEffect(() => {
@@ -61,10 +62,41 @@ export function CreateTenantButton({
     return () => document.removeEventListener('keydown', handler)
   }, [open])
 
+  // Chequea disponibilidad del slug con debounce 400ms. Usa GET /api/admin/tenants/<slug>
+  // que devuelve 404 si no existe y 200 si existe — no necesitamos endpoint nuevo.
+  useEffect(() => {
+    if (!previewSlug || previewSlug.length < 2) {
+      setSlugStatus('idle')
+      return
+    }
+    setSlugStatus('checking')
+    const ctrl = new AbortController()
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/tenants/${encodeURIComponent(previewSlug)}`, {
+          signal: ctrl.signal,
+        })
+        if (ctrl.signal.aborted) return
+        setSlugStatus(res.status === 404 ? 'available' : res.ok ? 'taken' : 'idle')
+      } catch {
+        // Network/abort → no mostramos error de validación.
+        if (!ctrl.signal.aborted) setSlugStatus('idle')
+      }
+    }, 400)
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [previewSlug])
+
   async function onSubmit(data: FormData) {
     const phoneNorm = normalizePhoneE164(data.owner_phone)
     if (!phoneNorm) {
       toast.error('Teléfono inválido')
+      return
+    }
+    if (slugStatus === 'taken') {
+      toast.error(`El slug "${previewSlug}" ya está en uso. Cambiá el nombre.`)
       return
     }
     try {
@@ -134,7 +166,16 @@ export function CreateTenantButton({
                 <input {...register('name')} placeholder="Tienda de Ropa ABC" className={INPUT} />
                 {previewSlug && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Slug: <span className="font-mono">{previewSlug}</span>
+                    Slug: <span className="font-mono">{previewSlug}</span>{' '}
+                    {slugStatus === 'checking' && (
+                      <span className="text-muted-foreground">verificando…</span>
+                    )}
+                    {slugStatus === 'available' && (
+                      <span className="text-emerald-600">disponible ✓</span>
+                    )}
+                    {slugStatus === 'taken' && (
+                      <span className="text-destructive">ya existe ✗</span>
+                    )}
                   </p>
                 )}
               </Field>

@@ -71,6 +71,12 @@ router.post('/:slug', rawBody, async (req, res) => {
     });
     return res.status(201).json(saved);
   } catch (err) {
+    // Colisión de UUID en el filename (flag 'wx' = exclusive open): probabilidad
+    // infinitesimal pero existe. Devolver 409 con guía para reintentar.
+    if (err.code === 'EEXIST') {
+      logger.warn({ slug: req.params.slug }, '[Media] colision UUID en upload — reintentá');
+      return res.status(409).json({ error: 'Colisión de nombre, reintentá la subida' });
+    }
     logger.error({ slug: req.params.slug, err: err.message }, '[Media] upload falló');
     return res.status(500).json({ error: err.message || 'No se pudo guardar el archivo' });
   }

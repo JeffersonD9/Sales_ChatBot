@@ -48,7 +48,8 @@ function parseCSV(text: string): string[][] {
   let fields: string[] = []
   let current = ''
   let inQuotes = false
-  const src = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  // Stripear BOM UTF-8 inicial (Excel-Windows lo agrega en CSV exportados).
+  const src = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 
   for (let i = 0; i < src.length; i++) {
     const ch = src[i]
@@ -284,7 +285,10 @@ export function CsvImportDialog({ open, tenantSlug, onClose, onImported }: Props
   }
 
   function downloadTemplate() {
-    const blob = new Blob([TEMPLATE_CSV], { type: 'text/csv;charset=utf-8' })
+    // BOM UTF-8 (﻿) al inicio: sin esto Excel en Windows abre tildes y
+    // emojis como mojibake. El parseCSV propio ignora silenciosamente el BOM
+    // al inicio del archivo.
+    const blob = new Blob(['﻿', TEMPLATE_CSV], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
