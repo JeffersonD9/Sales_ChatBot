@@ -1,5 +1,11 @@
 # Bot routes — siempre activo.
 # Variable requerida: DOMAIN (ej: jestsolution.tech)
+#
+# Resolución lazy de upstreams via Docker DNS (127.0.0.11) con TTL 10s:
+# cada request re-resuelve el nombre del servicio en vez de cachear la IP al
+# arrancar nginx. Sin esto, cuando `docker compose up` recrea api/whatsapp/
+# worker (rollback parcial, pull, etc.), nginx queda apuntando a la IP vieja
+# del container y devuelve 502 Connection refused hasta que se reinicia.
 
 server {
   listen 80;
@@ -10,7 +16,9 @@ server {
   }
 
   location = /health {
-    proxy_pass http://api:3000;
+    resolver 127.0.0.11 valid=10s;
+    set $api_upstream http://api:3000;
+    proxy_pass $api_upstream;
     proxy_set_header Host $host;
   }
 
@@ -36,7 +44,9 @@ server {
 
   location ~ ^/webhook/[a-z0-9_-]+$ {
     limit_req zone=webhook burst=50 nodelay;
-    proxy_pass         http://whatsapp:3001;
+    resolver 127.0.0.11 valid=10s;
+    set $whatsapp_upstream http://whatsapp:3001;
+    proxy_pass         $whatsapp_upstream;
     proxy_set_header   Host              $host;
     proxy_set_header   X-Real-IP         $remote_addr;
     proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -54,7 +64,9 @@ server {
   }
 
   location / {
-    proxy_pass       http://api:3000;
+    resolver 127.0.0.11 valid=10s;
+    set $api_upstream http://api:3000;
+    proxy_pass       $api_upstream;
     proxy_set_header Host              $host;
     proxy_set_header X-Real-IP         $remote_addr;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
