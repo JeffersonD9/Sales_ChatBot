@@ -57,6 +57,38 @@ function makeServices() {
   };
 }
 
+// ── Placeholder swap para el demo ──────────────────────────────────────────
+// El engine arma URLs estilo "{storage_base_url}/images/tallas/L/001.jpg".
+// En el demo no garantizamos que el tenant tenga CDN ni los archivos subidos,
+// asi que cualquier URL no-http la mapeamos a picsum.photos con seed determinista
+// (mismo path → siempre la misma imagen, no parpadea entre reloads).
+function seedFromPath(value) {
+  const cleaned = String(value || 'demo')
+    .toLowerCase()
+    .replace(/^https?:\/\/[^/]+\/?/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return cleaned || 'demo';
+}
+
+function isHttpUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value);
+}
+
+function normalizeDemoReplies(replies) {
+  return replies.map((reply) => {
+    if (reply?.type === 'image' && !isHttpUrl(reply.url)) {
+      return { ...reply, url: `https://picsum.photos/seed/${seedFromPath(reply.url)}/600/750` };
+    }
+    if (reply?.type === 'audio' && !isHttpUrl(reply.url)) {
+      // Audio placeholder publico — el UI muestra el nombre, no reproduce.
+      return { ...reply, url: 'https://www.w3schools.com/html/horse.ogg' };
+    }
+    return reply;
+  });
+}
+
 function validSession(input) {
   if (!input || typeof input !== 'object') return null;
   if (typeof input.step !== 'string') return null;
@@ -136,7 +168,7 @@ router.post('/:slug/flow-demo', async (req, res) => {
     });
 
     session.lastActivity = Date.now();
-    return res.json({ ok: true, data: { flowType, replies, session } });
+    return res.json({ ok: true, data: { flowType, replies: normalizeDemoReplies(replies), session } });
   } catch (err) {
     logger.error({ slug: req.params.slug, err: err.message }, '[Admin:FlowDemo] post error');
     return res.status(500).json({ ok: false, error: 'Error interno' });
