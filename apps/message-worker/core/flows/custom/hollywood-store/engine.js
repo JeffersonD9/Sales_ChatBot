@@ -639,7 +639,7 @@ async function processMessage(phone, rawMsg, session, tenant, notifier, services
 }
 
 async function saveOrder(phone, data, tenant) {
-  if (process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test') return;
+  if (process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test' || tenant?.wa_token === 'DEMO_TOKEN') return;
 
   try {
     const tenantId = tenant.tenantId ?? tenant.id;

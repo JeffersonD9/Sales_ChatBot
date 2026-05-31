@@ -2,14 +2,15 @@
 
 import type { ProductRow } from '@/queries/products'
 import type { TenantDetail } from '@/queries/tenants'
-import { MessageCircle } from 'lucide-react'
+import { MessageCircle, MonitorPlay } from 'lucide-react'
 import { useState } from 'react'
 import { ConfigTab } from './config-tab'
+import { FlowDemoTab } from './flow-demo-tab'
 import { PersonaTab } from './persona-tab'
 import { ProductsTab } from './products-tab'
 import { WhatsappTab } from './whatsapp-tab'
 
-type Tab = 'products' | 'persona' | 'whatsapp' | 'config'
+type Tab = 'products' | 'persona' | 'whatsapp' | 'config' | 'demo'
 
 type Props = {
   tenant: TenantDetail
@@ -51,6 +52,10 @@ export function TenantDetailClient({ tenant, products }: Props) {
             {flowLabel}
           </span>
         </TabButton>
+        <TabButton active={activeTab === 'demo'} onClick={() => setActiveTab('demo')}>
+          <MonitorPlay className="h-4 w-4" />
+          Demo
+        </TabButton>
       </div>
 
       {/* Tab content */}
@@ -62,6 +67,7 @@ export function TenantDetailClient({ tenant, products }: Props) {
       {activeTab === 'config' && (
         <ConfigTab tenantSlug={tenant.slug} botConfig={tenant.bot_config} />
       )}
+      {activeTab === 'demo' && <FlowDemoTab tenant={tenant} />}
     </div>
   )
 }

@@ -46,4 +46,8 @@ function getFlow(flowType) {
   return { engine: entry.load(), aiCapabilities: entry.aiCapabilities };
 }
 
-module.exports = { getFlow, DEFAULT_FLOW };
+function listFlows() {
+  return Object.keys(FLOWS_REGISTRY);
+}
+
+module.exports = { getFlow, listFlows, DEFAULT_FLOW };

@@ -6,12 +6,15 @@
  */
 
 const axios = require('axios');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { logger } = require('@whatsapp-saas/logger');
 const antiBanGuard = require('../../../../packages/platform-data/src/integrations/whatsapp/antiBanGuard');
 const { createLocalVpsStorageAdapter } = require('../../../../packages/platform-data/src/media/storage');
 
 const META_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
 const D360_BASE_URL = process.env.D360_BASE_URL || 'https://waba-v2.360dialog.io';
+const demoCollectorStorage = global.__demoCollectorStorage || new AsyncLocalStorage();
+global.__demoCollectorStorage = demoCollectorStorage;
 
 function elapsedMs(startedAt) {
   return Number(process.hrtime.bigint() - startedAt) / 1e6;
@@ -26,9 +29,18 @@ function isDemoMode(tenant) {
 }
 
 function collectDemo(simplified) {
+  const scopedCollector = demoCollectorStorage.getStore();
+  if (scopedCollector) {
+    scopedCollector.push(simplified);
+    return;
+  }
   if (global.demoCollector) {
     global.demoCollector.push(simplified);
   }
+}
+
+function runWithDemoCollector(collector, fn) {
+  return demoCollectorStorage.run(collector, fn);
 }
 
 function normalizeProvider(value) {
@@ -214,4 +226,5 @@ module.exports = {
   sendAudio,
   getProvider,
   requestForProvider,
+  runWithDemoCollector,
 };
