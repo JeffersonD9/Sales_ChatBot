@@ -70,6 +70,18 @@ router.post('/', async (req, res) => {
     });
   }
 
+  // Defensa: slug debe coincidir con la forma que produce slugify() y respetar
+  // el varchar(64) de la columna.
+  if (typeof slug !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(slug)) {
+    return res.status(400).json({
+      ok: false,
+      error: 'slug inválido (solo a-z, 0-9 y -; máximo 64 chars)',
+    });
+  }
+  if (typeof name !== 'string' || name.length < 2 || name.length > 256) {
+    return res.status(400).json({ ok: false, error: 'name debe tener entre 2 y 256 chars' });
+  }
+
   // Validación E.164 (acepta variantes con espacios/guiones, normaliza al canónico)
   const owner_phone_norm = normalizePhoneE164(owner_phone);
   if (!owner_phone_norm) {

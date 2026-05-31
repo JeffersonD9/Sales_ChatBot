@@ -1,6 +1,6 @@
 import { validateSession } from '@/lib/auth'
 import { created, err, forbidden, ok, serverError, unauthorized } from '@/lib/response'
-import { createPlan, getPlanList } from '@/queries/plans'
+import { createPlan, getPlanList, invalidatePlanCodes } from '@/queries/plans'
 import { createPlanSchema } from './_schema'
 
 export async function GET(req: Request) {
@@ -35,7 +35,9 @@ export async function POST(req: Request) {
     const parsed = createPlanSchema.safeParse(body)
     if (!parsed.success) return err('Datos inválidos', 400, parsed.error.flatten())
 
-    return created(await createPlan(parsed.data))
+    const plan = await createPlan(parsed.data)
+    invalidatePlanCodes()
+    return created(plan)
   } catch (e: unknown) {
     if (e instanceof Error && e.message.includes('unique'))
       return err('El código del plan ya existe')

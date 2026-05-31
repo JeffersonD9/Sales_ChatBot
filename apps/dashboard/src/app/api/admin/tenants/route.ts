@@ -2,6 +2,7 @@ import { env } from '@/env'
 import { validateSession } from '@/lib/auth'
 import { created, err, ok, serverError, unauthorized } from '@/lib/response'
 import { normalizePhoneE164, slugify } from '@/lib/utils'
+import { getActivePlanCodes } from '@/queries/plans'
 import { getTenantList } from '@/queries/tenants'
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
@@ -66,8 +67,17 @@ export async function POST(req: NextRequest) {
     return err('owner_phone debe estar en formato internacional E.164 (ej. +573001234567)', 400)
   }
 
+  // Plan debe existir en la tabla plans (no basta el regex sintáctico).
+  const validPlanCodes = await getActivePlanCodes()
+  if (!validPlanCodes.includes(parsed.data.plan)) {
+    return err(
+      `Plan inválido. Opciones: ${validPlanCodes.join(', ') || '(no hay planes activos)'}`,
+      400,
+    )
+  }
+
   const slug = slugify(parsed.data.name).slice(0, 60)
-  if (!slug) return err('Nombre inválido para generar slug', 400)
+  if (slug.length < 2) return err('Nombre inválido para generar slug (mínimo 2 chars)', 400)
 
   // Proxy a api-core: genera verify_token, cifra wa_token cuando exista,
   // crea la allocation y publica el evento de invalidación de cache.

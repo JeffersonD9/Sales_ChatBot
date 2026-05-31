@@ -49,7 +49,7 @@ export function CreateTenantButton({
   })
 
   const name = watch('name')
-  const previewSlug = name ? slugify(name) : ''
+  const previewSlug = name ? slugify(name).slice(0, 60) : ''
 
   // Cerrar con Escape
   useEffect(() => {

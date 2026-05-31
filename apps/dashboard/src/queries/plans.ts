@@ -2,6 +2,25 @@ import { db } from '@/db'
 import { plans, tenants } from '@/db/schema'
 import { asc, count, eq, ilike, or } from 'drizzle-orm'
 
+const PLAN_CODES_TTL_MS = 60_000
+let cachedCodes: { value: string[]; expiresAt: number } | null = null
+
+/**
+ * Lista de códigos de plan válidos. Cache en memoria 60s para no martillar la DB
+ * en cada POST/PATCH de tenant. Bust manual con invalidatePlanCodes().
+ */
+export async function getActivePlanCodes(): Promise<string[]> {
+  if (cachedCodes && Date.now() < cachedCodes.expiresAt) return cachedCodes.value
+  const rows = await db.select({ code: plans.code }).from(plans)
+  const value = rows.map((r) => r.code)
+  cachedCodes = { value, expiresAt: Date.now() + PLAN_CODES_TTL_MS }
+  return value
+}
+
+export function invalidatePlanCodes() {
+  cachedCodes = null
+}
+
 export type PlanRow = typeof plans.$inferSelect
 
 export type PlanListParams = {
